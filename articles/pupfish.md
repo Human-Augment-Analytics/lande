@@ -1,4 +1,4 @@
-# Pupfish in two lakes
+# San Salvador pupfish
 
 Martin (2016) released laboratory-reared hybrids of the three
 *Cyprinodon* pupfish species of San Salvador Island into field

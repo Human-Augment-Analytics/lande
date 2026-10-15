@@ -1,6 +1,6 @@
 # lande
 
-Stroud lab’s Lande-Arnold toolkit for measuring phenotypic selection.
+An R package for Lande-Arnold analyses of natural selection.
 
 The package estimates selection differentials and linear (beta),
 quadratic (gamma) and correlational (gamma_ij) selection gradients, fits
@@ -105,8 +105,10 @@ plot_temporal_landscape(years, type = "heatmap")
 
 ## App
 
+The app runs online at <https://lande.thestroudlab.com/>, with nothing
+to install. In R,
 [`run_app()`](https://human-augment-analytics.github.io/lande/reference/run_app.md)
-opens the analysis in a browser: bundled or uploaded data, gradients,
+opens the same app in a browser: bundled or uploaded data, gradients,
 fitness functions, surface, landscape and per-group results, with the
 fitting options in Advanced settings. Needs `shiny`; `plotly` adds the
 rotatable 3D landscape. The app lives in `inst/app`; see its README
@@ -271,11 +273,11 @@ Example datasets included with lande
 
 ### Case studies
 
-- [Bumpus's
+- [Bumpus
   sparrows](https://human-augment-analytics.github.io/lande/articles/bumpus-sparrows.md):
-- [Pupfish in two
-  lakes](https://human-augment-analytics.github.io/lande/articles/pupfish.md):
-- [Five finch groups on one
-  surface](https://human-augment-analytics.github.io/lande/articles/finch-community.md):
-- [Finches year by
-  year](https://human-augment-analytics.github.io/lande/articles/finches-year-by-year.md):
+- [San Salvador
+  pupfish](https://human-augment-analytics.github.io/lande/articles/pupfish.md):
+- [Darwin's finch
+  community](https://human-augment-analytics.github.io/lande/articles/finch-community.md):
+- [Darwin's finch annual
+  selection](https://human-augment-analytics.github.io/lande/articles/finches-year-by-year.md):

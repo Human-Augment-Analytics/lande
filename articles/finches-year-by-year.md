@@ -1,4 +1,4 @@
-# Finches year by year
+# Darwin's finch annual selection
 
 Beausoleil et al. (2019) followed medium ground finches at El
 Garrapatero and fitted a separate fitness function to each year. The

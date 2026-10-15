@@ -42,13 +42,13 @@
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-case-studies" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Case studies</button>
   <ul class="dropdown-menu" aria-labelledby="dropdown-case-studies">
-<li><a class="dropdown-item" href="articles/bumpus-sparrows.html">Bumpus's sparrows</a></li>
-    <li><a class="dropdown-item" href="articles/pupfish.html">Pupfish in two lakes</a></li>
-    <li><a class="dropdown-item" href="articles/finch-community.html">Five finch groups on one surface</a></li>
-    <li><a class="dropdown-item" href="articles/finches-year-by-year.html">Finches year by year</a></li>
+<li><a class="dropdown-item" href="articles/bumpus-sparrows.html">Bumpus sparrows</a></li>
+    <li><a class="dropdown-item" href="articles/pupfish.html">San Salvador pupfish</a></li>
+    <li><a class="dropdown-item" href="articles/finch-community.html">Darwin's finch community</a></li>
+    <li><a class="dropdown-item" href="articles/finches-year-by-year.html">Darwin's finch annual selection</a></li>
   </ul>
 </li>
-<li class="nav-item"><a class="nav-link" href="https://human-augment-analytics.github.io/lande/app/">App</a></li>
+<li class="nav-item"><a class="external-link nav-link" href="https://lande.thestroudlab.com/">App</a></li>
 <li class="nav-item"><a class="nav-link" href="reference/index.html">Reference</a></li>
       </ul>
 <ul class="navbar-nav">
@@ -68,7 +68,7 @@
 <img src="logo.png" class="logo" alt=""><h1 id="lande-">lande <a class="anchor" aria-label="anchor" href="#lande-"></a>
 </h1>
 </div>
-<p>Stroud lab’s Lande-Arnold toolkit for measuring phenotypic selection.</p>
+<p>An R package for Lande-Arnold analyses of natural selection.</p>
 <p>The package estimates selection differentials and linear (beta), quadratic (gamma) and correlational (gamma_ij) selection gradients, fits spline fitness functions and two-trait fitness surfaces, and computes the adaptive landscape of mean fitness against the population mean. Each of these can be repeated by year, and several groups can sit on one surface.</p>
 <p>Traits are standardised to mean 0 and SD 1 and fitness is relativised (w / mean w) before fitting. Quadratic gradients and their standard errors are doubled (Stinchcombe et al. 2008); correlational gradients are not. For binary fitness the gradients come from OLS on relative fitness and the p-values from a logistic GLM; count fitness gets its p-values from a Poisson GLM, or a negative binomial one when the counts are overdispersed.</p>
 <div class="section level2">
@@ -145,7 +145,7 @@
 <div class="section level2">
 <h2 id="app">App<a class="anchor" aria-label="anchor" href="#app"></a>
 </h2>
-<p><code><a href="reference/run_app.html">run_app()</a></code> opens the analysis in a browser: bundled or uploaded data, gradients, fitness functions, surface, landscape and per-group results, with the fitting options in Advanced settings. Needs <code>shiny</code>; <code>plotly</code> adds the rotatable 3D landscape. The app lives in <code>inst/app</code>; see its README there.</p>
+<p>The app runs online at <a href="https://lande.thestroudlab.com/" class="external-link uri">https://lande.thestroudlab.com/</a>, with nothing to install. In R, <code><a href="reference/run_app.html">run_app()</a></code> opens the same app in a browser: bundled or uploaded data, gradients, fitness functions, surface, landscape and per-group results, with the fitting options in Advanced settings. Needs <code>shiny</code>; <code>plotly</code> adds the rotatable 3D landscape. The app lives in <code>inst/app</code>; see its README there.</p>
 </div>
 <div class="section level2">
 <h2 id="data">Data<a class="anchor" aria-label="anchor" href="#data"></a>

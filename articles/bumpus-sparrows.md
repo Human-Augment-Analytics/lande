@@ -1,4 +1,4 @@
-# Bumpus's sparrows
+# Bumpus sparrows
 
 Bumpus (1899) measured 136 house sparrows brought in after a winter
 storm in Providence, Rhode Island, of which 72 survived. The data ship

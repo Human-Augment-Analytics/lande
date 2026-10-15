@@ -1,4 +1,4 @@
-# Five finch groups on one surface
+# Darwin's finch community
 
 Beausoleil et al. (2023) fitted one fitness surface to 3428 ground
 finches at El Garrapatero on Santa Cruz: four species, with *Geospiza

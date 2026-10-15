@@ -7,11 +7,11 @@
 
 ### Case studies
 
-- [Bumpus's
+- [Bumpus
   sparrows](https://human-augment-analytics.github.io/lande/articles/bumpus-sparrows.md):
-- [Pupfish in two
-  lakes](https://human-augment-analytics.github.io/lande/articles/pupfish.md):
-- [Five finch groups on one
-  surface](https://human-augment-analytics.github.io/lande/articles/finch-community.md):
-- [Finches year by
-  year](https://human-augment-analytics.github.io/lande/articles/finches-year-by-year.md):
+- [San Salvador
+  pupfish](https://human-augment-analytics.github.io/lande/articles/pupfish.md):
+- [Darwin's finch
+  community](https://human-augment-analytics.github.io/lande/articles/finch-community.md):
+- [Darwin's finch annual
+  selection](https://human-augment-analytics.github.io/lande/articles/finches-year-by-year.md):
