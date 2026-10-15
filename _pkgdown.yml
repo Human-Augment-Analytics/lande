@@ -26,17 +26,17 @@ navbar:
     casestudies:
       text: Case studies
       menu:
-      - text: Bumpus's sparrows
+      - text: Bumpus sparrows
         href: articles/bumpus-sparrows.html
-      - text: Pupfish in two lakes
+      - text: San Salvador pupfish
         href: articles/pupfish.html
-      - text: Five finch groups on one surface
+      - text: Darwin's finch community
         href: articles/finch-community.html
-      - text: Finches year by year
+      - text: Darwin's finch annual selection
         href: articles/finches-year-by-year.html
     app:
       text: App
-      href: https://human-augment-analytics.github.io/lande/app/
+      href: https://lande.thestroudlab.com/
 
 articles:
 - title: Guide

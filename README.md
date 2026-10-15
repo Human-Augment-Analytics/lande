@@ -1,6 +1,6 @@
 # lande <img src="man/figures/logo.png" align="right" height="139" alt="" />
 
-Stroud lab's Lande-Arnold toolkit for measuring phenotypic selection.
+An R package for Lande-Arnold analyses of natural selection.
 
 The package estimates selection differentials and linear (beta), quadratic
 (gamma) and correlational (gamma_ij) selection gradients, fits spline fitness
@@ -96,9 +96,10 @@ plot_temporal_landscape(years, type = "heatmap")
 
 ## App
 
-`run_app()` opens the analysis in a browser: bundled or uploaded data,
-gradients, fitness functions, surface, landscape and per-group results, with
-the fitting options in Advanced settings. Needs `shiny`; `plotly` adds the
+The app runs online at <https://lande.thestroudlab.com/>, with nothing to
+install. In R, `run_app()` opens the same app in a browser: bundled or
+uploaded data, gradients, fitness functions, surface, landscape and per-group
+results, with the fitting options in Advanced settings. Needs `shiny`; `plotly` adds the
 rotatable 3D landscape. The app lives in `inst/app`; see its README there.
 
 ## Data
