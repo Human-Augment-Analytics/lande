@@ -1,5 +1,5 @@
 ---
-title: "Finches year by year"
+title: "Darwin's finch annual selection"
 ---
 
 ```{r, include = FALSE}

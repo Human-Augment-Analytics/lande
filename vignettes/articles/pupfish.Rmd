@@ -1,5 +1,5 @@
 ---
-title: "Pupfish in two lakes"
+title: "San Salvador pupfish"
 ---
 
 ```{r, include = FALSE}

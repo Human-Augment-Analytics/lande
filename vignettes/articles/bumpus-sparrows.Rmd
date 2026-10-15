@@ -1,5 +1,5 @@
 ---
-title: "Bumpus's sparrows"
+title: "Bumpus sparrows"
 ---
 
 ```{r, include = FALSE}

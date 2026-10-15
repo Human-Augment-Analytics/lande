@@ -1,5 +1,5 @@
 ---
-title: "Five finch groups on one surface"
+title: "Darwin's finch community"
 ---
 
 ```{r, include = FALSE}
