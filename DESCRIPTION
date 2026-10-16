@@ -1,6 +1,6 @@
 Package: lande
 Type: Package
-Title: Tools for Evolutionary Selection Analysis
+Title: Evolutionary Selection Analysis
 Version: 0.1.0
 Authors@R: 
     c(
@@ -35,7 +35,7 @@ Description: Estimates selection differentials and linear, quadratic and
     drawn only where there are data, and computes adaptive landscapes of mean
     fitness against the population mean for one or two traits, by period and
     for several groups on one surface. Includes bootstrap intervals, a
-    combined results table and a Shiny app.
+    combined results table and a 'shiny' app.
 License: MIT + file LICENSE
 URL: https://github.com/Human-Augment-Analytics/lande,
     https://human-augment-analytics.github.io/lande/
