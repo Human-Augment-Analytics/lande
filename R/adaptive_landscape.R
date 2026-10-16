@@ -183,7 +183,9 @@ adaptive_landscape <- function(
 
     # A GAM fitted with a group term (correlated_fitness_surface(..., group =))
     # needs that variable to predict from. Hold every non-trait predictor at a
-    # reference level taken from `data`, as the surface functions do.
+    # reference level taken from the data the model was fitted to, where the
+    # group is a factor, so a numeric group such as year is held at the same
+    # level as on the surface (as peak_difference() does).
     extra_vars <- list()
     if (inherits(fitness_model, "gam")) {
         mf_names <- names(fitness_model$model)
@@ -193,7 +195,7 @@ adaptive_landscape <- function(
             if (!v %in% names(data)) {
                 stop("The fitness model uses '", v, "', which is not in `data`")
             }
-            extra_vars[[v]] <- .reference_group(data[[v]])
+            extra_vars[[v]] <- .reference_group(fitness_model$model[[v]])
             message("Holding '", v, "' at reference level '", extra_vars[[v]], "'")
         }
     }

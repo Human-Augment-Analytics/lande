@@ -341,3 +341,22 @@ test_that("Mardia's subsample is the same every run and leaves the random number
   expect_equal(a$statistic, b$statistic)
   expect_match(a$note[1], "random 2000 of 2500 rows")
 })
+
+test_that("a numeric group is held at the same level on the surface and the landscape", {
+  # level 1 is the most common, level 2 the middle one: the landscape used to
+  # take the middle level of the raw column while the surface took the most
+  # common level of the factor it fitted
+  set.seed(11)
+  n <- 300
+  d <- data.frame(g = rep(c(1, 2, 3), c(180, 60, 60)), z1 = rnorm(n), z2 = rnorm(n))
+  d$w <- rbinom(n, 1, plogis(-0.3 + 0.6 * d$z1 - 0.4 * d$z2^2 + 0.5 * (d$g == 3)))
+  surf_msgs <- character()
+  surf <- withCallingHandlers(
+    correlated_fitness_surface(d, "w", c("z1", "z2"), group = "g", grid_n = 10),
+    message = function(m) { surf_msgs <<- c(surf_msgs, conditionMessage(m)); invokeRestart("muffleMessage") })
+  land_msgs <- capture_messages(adaptive_landscape(d, surf$model, c("z1", "z2"), simulation_n = 50, grid_n = 5))
+  surf_ref <- sub(".*group = '([^']+)'.*", "\\1", grep("as reference", surf_msgs, value = TRUE))
+  land_ref <- sub(".*reference level '([^']+)'.*", "\\1", grep("reference level", land_msgs, value = TRUE))
+  expect_identical(surf_ref, "1")
+  expect_identical(land_ref, surf_ref)
+})
