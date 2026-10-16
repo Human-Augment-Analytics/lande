@@ -49,7 +49,7 @@ Imports:
     MASS,
     Matrix,
     ggplot2 (>= 3.4.0),
-    dplyr,
+    dplyr (>= 1.1.0),
     fields,
     grDevices,
     stats,
@@ -66,7 +66,7 @@ Suggests:
     knitr,
     RhpcBLASctl,
     rmarkdown,
-    testthat (>= 3.0.0)
+    testthat (>= 3.1.7)
 VignetteBuilder: knitr, rmarkdown
 Config/testthat/edition: 3
 Config/roxygen2/version: 8.0.0
