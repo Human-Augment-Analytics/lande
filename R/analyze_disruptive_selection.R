@@ -24,7 +24,7 @@
 #' @param fitness_col A string specifying the name of the fitness column.
 #' @param trait_col A string specifying the name of the single trait column.
 #' @param fitness_type A string indicating the fitness type: \code{"auto"} (detect from the data),
-#'   \code{"binary"}, or \code{"continuous"}. Default is \code{"auto"}.
+#'   \code{"binary"}, \code{"count"} or \code{"continuous"}. Default is \code{"auto"}.
 #' @param standardize Logical indicating whether to standardize the trait to mean 0 and SD 1. Default is \code{TRUE}.
 #' @param group Optional string specifying a grouping variable; standardisation and
 #'   relative fitness are then computed within each group.

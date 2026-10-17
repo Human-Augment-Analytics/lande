@@ -112,7 +112,8 @@
 #' Medium ground finches (\emph{Geospiza fortis}) marked and recaptured at El
 #' Garrapatero, Santa Cruz Island, Galapagos. Each row is a bird in a year it
 #' was seen, from 2004 to 2010, with whether it was seen again in any later
-#' year (apparent survival). Built by \code{data-raw/finch_yearly.R}.
+#' year (apparent survival). Built by \code{data-raw/finch_yearly.R} in the
+#' GitHub repository.
 #'
 #' @format A data frame with 1087 rows and 7 variables:
 #' \describe{
