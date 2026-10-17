@@ -853,7 +853,8 @@ server <- function(input, output, session) {
     if (!has_fields) { plot.new(); text(0.5, 0.5, "3D view needs the 'fields' or 'plotly' package"); return() }
     plot_adaptive_landscape_3d(sf$land, sf$traits, color_palette = theme_of(input$land_theme)$ramp(100))
   })
-  output$land3d_plotly <- plotly::renderPlotly({
+  # plotly is optional: without it the 3D view above falls back to fields
+  if (has_plotly) output$land3d_plotly <- plotly::renderPlotly({
     sf <- surfaces(); g <- sf$land$grid; tr <- sf$traits; opt <- sf$land$optimum
     xu <- sort(unique(g[[tr[1]]])); yu <- sort(unique(g[[tr[2]]]))
     z <- matrix(NA_real_, nrow = length(yu), ncol = length(xu)) # plotly: rows follow y
