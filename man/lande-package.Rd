@@ -4,7 +4,7 @@
 \name{lande-package}
 \alias{lande}
 \alias{lande-package}
-\title{lande: Evolutionary Selection Analysis}
+\title{lande: Standardised Analyses of Natural Selection Data}
 \description{
 \if{html}{\figure{logo.png}{options: style='float: right' alt='logo' width='120'}}
 

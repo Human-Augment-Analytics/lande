@@ -1,6 +1,6 @@
 Package: lande
 Type: Package
-Title: Evolutionary Selection Analysis
+Title: Standardised Analyses of Natural Selection Data
 Version: 0.1.1
 Authors@R: 
     c(

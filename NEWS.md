@@ -9,8 +9,8 @@
   back to the fields plot as intended.
 * The finch_community help page cites the authors' CC BY 4.0 data deposit on
   Borealis as its source.
-* The title drops "Tools for", and the minimum versions of dplyr (1.1.0) and
-  testthat (3.1.7) are set.
+* The title is now "Standardised Analyses of Natural Selection Data".
+* The minimum versions of dplyr (1.1.0) and testthat (3.1.7) are set.
 * Smaller fixes to the help pages, the examples and the vignette.
 
 # lande 0.1.0
