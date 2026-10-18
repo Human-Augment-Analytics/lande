@@ -1,7 +1,7 @@
 Package: lande
 Type: Package
 Title: Standardised Analyses of Natural Selection Data
-Version: 0.1.1
+Version: 0.1.1.9000
 Authors@R: 
     c(
         person("Vanessa", "Zhou",
