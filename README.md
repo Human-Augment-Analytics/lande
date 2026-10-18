@@ -18,6 +18,12 @@ the counts are overdispersed.
 ## Installation
 
 ```r
+install.packages("lande")
+```
+
+The development version is on GitHub:
+
+```r
 # install.packages("remotes")
 remotes::install_github("Human-Augment-Analytics/lande")
 ```
