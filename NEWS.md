@@ -1,3 +1,18 @@
+# lande 0.1.1
+
+* `adaptive_landscape()` holds a numeric group, such as year, at the same
+  reference level as `correlated_fitness_surface()`. It took the median level
+  of the raw column, while the surface took the most common level, so a
+  landscape from a surface with `group = "year"` could be drawn at a different
+  year from the surface.
+* The app no longer needs plotly to start: without it, the 3D landscape falls
+  back to the fields plot as intended.
+* The finch_community help page cites the authors' CC BY 4.0 data deposit on
+  Borealis as its source.
+* The title drops "Tools for", and the minimum versions of dplyr (1.1.0) and
+  testthat (3.1.7) are set.
+* Smaller fixes to the help pages, the examples and the vignette.
+
 # lande 0.1.0
 
 First release.
