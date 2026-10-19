@@ -1,5 +1,8 @@
 # lande (development version)
 
+* The app has a new layout built around its results, each with its own
+  downloads.
+
 # lande 0.1.1
 
 * `adaptive_landscape()` holds a numeric group, such as year, at the same

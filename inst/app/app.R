@@ -109,9 +109,32 @@ THEMES <- list(
                                     points = c("#D55E00", "#0072B2"))
 )
 theme_of <- function(theme) if (!is.null(theme) && theme %in% names(THEMES)) THEMES[[theme]] else THEMES[[1]]
+# shorter legend labels for the binned surface and landscape fills, "0.064–0.13"
+# for "(0.0642, 0.1283]", with just enough digits to keep the bins apart
+short_bins <- function(lv) {
+  txt <- regmatches(lv, gregexpr("-?[0-9]*\\.?[0-9]+(e[-+]?[0-9]+)?", lv))
+  if (!length(lv) || !all(lengths(txt) == 2)) return(lv)
+  lo <- as.numeric(vapply(txt, `[`, "", 1)); hi_txt <- vapply(txt, `[`, "", 2); hi <- as.numeric(hi_txt)
+  # ggplot prints the two ends of a bin separately, so one boundary can come as
+  # 0.147 and 0.1467: count it once where the two agree at the printed digits
+  for (i in seq_len(length(lv) - 1)) {
+    if (!grepl("e", hi_txt[i])) {
+      dec <- nchar(sub("^[^.]*\\.?", "", hi_txt[i]))
+      if (round(lo[i + 1], dec) == hi[i]) hi[i] <- lo[i + 1]
+    }
+  }
+  b <- sort(unique(c(lo, hi)))
+  for (d in 2:6) {
+    f <- trimws(formatC(b, digits = d, format = "fg"))
+    if (!anyDuplicated(f)) break
+  }
+  f <- sub("^-", "−", f)
+  sep <- if (any(b < 0)) " to " else "–"
+  paste0(f[match(lo, b)], sep, f[match(hi, b)])
+}
 apply_theme <- function(p, theme, binary = NULL, fill_name = NULL, point_name = "Fitness") {
   th <- theme_of(theme)
-  p <- p + th$fill(name = fill_name)
+  p <- p + th$fill(name = fill_name, labels = short_bins)
   if (isTRUE(binary)) {
     p <- p + ggplot2::scale_colour_manual(values = c("0" = th$points[1], "1" = th$points[2]),
                                           labels = c("0" = "Perished", "1" = "Survived"), name = "Outcome")
@@ -296,8 +319,17 @@ interpret <- function(r, traits, ftype, n, group) {
   c(lines, "", sprintf("n = %d. Traits in SD units, fitness relative to the mean%s.%s γ is curvature; check the fitness function for a peak.", n, within, basis))
 }
 
+# traits are standardised before every fit, so the plot axes are in SD units
+sd_lab <- function(t, mean = FALSE) paste0(if (mean) "mean " else "", t, " (SD)")
+# links open in a new tab, so the session and its results stay open
+doc_link <- function(text, href) tags$a(href = href, target = "_blank", rel = "noopener", text)
+# a result's heading with its downloads on the right
+res_head <- function(title, ...) div(class = "res-head", h4(class = "sec", title), div(class = "res-dl", ...))
+dl_btn <- function(id, label, what) downloadButton(id, label, title = what, `aria-label` = what)
+
 # --- UI ---------------------------------------------------------------------
 ui <- fluidPage(
+  title = "lande",
   tags$head(tags$style(HTML(
     ".help-note{color:#555;font-size:13px;margin-top:6px}
      .help-note.warn{color:#8a4b00}
@@ -307,7 +339,19 @@ ui <- fluidPage(
      .interp li{margin:5px 0}
      .interp p.foot{margin:10px 0 0;color:#555;font-size:13px}
      details summary{cursor:pointer;font-weight:600;margin:10px 0}
-     h4.sec{margin-top:18px}"
+     h4.sec{margin-top:18px}
+     .app-header{display:flex;align-items:center;flex-wrap:wrap;gap:6px 14px;padding:10px 20px 12px}
+     .app-header img{height:52px;width:auto}
+     .app-header h1{font-size:24px;font-weight:600;margin:0}
+     .app-header .app-sub{color:#555;font-size:14px}
+     .app-header .app-links{margin-left:auto;display:flex;flex-wrap:wrap;gap:16px;font-size:14px}
+     .intro{background:#f6f8fa;border-left:3px solid #2c7fb8;padding:10px 14px;margin:0 0 12px;font-size:14px}
+     .res-head{display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:8px;margin:18px 0 8px}
+     .res-head h4.sec{margin:0}
+     .res-head .res-dl{display:flex;align-items:center;flex-wrap:wrap;gap:6px}
+     .res-head .res-dl .form-group{margin:0}
+     .res-head .res-dl .radio-inline{padding-top:0}
+     @media (max-width:767px){#land_plot{height:400px !important}}"
   ))),
   tags$head(tags$link(rel = "icon", type = "image/png", href = "favicon.png")),
   # drop the connection after ten minutes without a click or keypress, so a tab
@@ -329,9 +373,13 @@ ui <- fluidPage(
       reset();
     })();
   "))),
-  # in line with the sidebar contents, which sit 20px inside its border
-  titlePanel(tags$img(src = "logo.png", height = "110px", alt = "lande", style = "margin-left: 20px"),
-             windowTitle = "lande"),
+  div(class = "app-header",
+      tags$img(src = "logo.png", alt = ""),
+      div(tags$h1("lande"), div(class = "app-sub", "Evolutionary selection analysis")),
+      div(class = "app-links",
+          doc_link("Guide", "https://human-augment-analytics.github.io/lande/articles/evolutionary-selection-analysis.html"),
+          doc_link("Reference", "https://human-augment-analytics.github.io/lande/reference/"),
+          doc_link("Report a problem", "https://github.com/Human-Augment-Analytics/lande/issues"))),
   sidebarLayout(
     sidebarPanel(
       width = 3,
@@ -374,19 +422,19 @@ ui <- fluidPage(
     ),
     mainPanel(
       width = 9,
+      conditionalPanel("input.run == 0", div(class = "intro", textOutput("intro", inline = TRUE))),
       tabsetPanel(id = "tabs",
         tabPanel("Data",
           br(), verbatimTextOutput("data_summary"),
           h4(class = "sec", "Traits and fitness"), tableOutput("trait_summary"),
           plotOutput("hist_plot", height = "300px"),
           h4(class = "sec", "Settings"), verbatimTextOutput("settings"),
-          h4(class = "sec", "R code"),
+          res_head("R code", dl_btn("dl_code", "R script", "Download the R script")),
           div(class = "help-note", "The calls that repeat this analysis in R with the settings above."),
-          verbatimTextOutput("r_code"),
-          downloadButton("dl_code", "Download R script")),
+          verbatimTextOutput("r_code")),
         tabPanel("Selection gradients",
-          br(),
-          h4(class = "sec", "Selection differentials and gradients"),
+          res_head("Selection differentials and gradients",
+                   dl_btn("dl_report", "CSV", "Download the gradients as CSV")),
           tableOutput("grad_table"),
           uiOutput("corr_table_ui"),
           uiOutput("fit_warnings"),
@@ -394,15 +442,11 @@ ui <- fluidPage(
           div(class = "help-note", "S total selection; β directional; γ quadratic curvature (negative is consistent with stabilising selection, positive with disruptive); γij correlational. * p < 0.05, ** < 0.01, *** < 0.001."),
           h4(class = "sec", "Summary"),
           uiOutput("interpretation"),
-          h4(class = "sec", "Gradient plot"),
+          res_head("Gradient plot", dl_btn("dl_gradplot", "PNG", "Download the gradient plot as PNG")),
           plotOutput("grad_plot", height = "360px"),
-          fluidRow(
-            column(6, actionButton("run_boot", "Add bootstrap confidence intervals"),
-                   div(class = "help-note", textOutput("boot_note"))),
-            column(6, downloadButton("dl_report", "Download table (CSV)"),
-                   downloadButton("dl_gradplot", "Download plot (PNG)"))
-          ),
-          h4(class = "sec", "Assumption checks"),
+          actionButton("run_boot", "Add bootstrap confidence intervals"),
+          div(class = "help-note", textOutput("boot_note")),
+          res_head("Assumption checks", dl_btn("dl_assump", "CSV", "Download the assumption checks as CSV")),
           tableOutput("assump_table"),
           div(class = "help-note", "Normality of the traits (Mardia, Shapiro-Wilk), the largest VIF, individuals per quadratic term, and the residuals or dispersion of the gradient model. For reporting only. With the performance package installed its tests are added.")),
         tabPanel("Fitness functions",
@@ -411,12 +455,14 @@ ui <- fluidPage(
             column(4, selectInput("uni_trait", "Trait", NULL)),
             column(4, sliderInput("spline_k", "Spline flexibility (k)", 3, 12, 5, step = 1)),
             column(4, br(), checkboxInput("classic", "Classic style", FALSE))),
+          res_head("Fitness function", dl_btn("dl_uniplot", "PNG", "Download the fitness function as PNG")),
           plotOutput("uni_plot", height = "440px"),
           div(class = "help-note", "Cubic spline (Schluter 1988) with bootstrap 95% band."),
-          downloadButton("dl_uniplot", "Download plot (PNG)"),
-          br(), br(),
+          br(),
           checkboxInput("uni_land", "Adaptive landscape for this trait", FALSE),
           conditionalPanel("input.uni_land",
+            res_head("Adaptive landscape for this trait",
+                     dl_btn("dl_unilandplot", "PNG", "Download the one-trait landscape as PNG")),
             plotOutput("uni_land_plot", height = "400px"),
             div(class = "help-note", "Mean fitness of a population against its mean for this trait, with the fitness function dashed."))),
         tabPanel("Fitness surface",
@@ -432,21 +478,28 @@ ui <- fluidPage(
             column(4, selectInput("theme", "Colours", names(THEMES))),
             column(3, selectInput("surf_unc", "Uncertainty (GAM)",
                                   c("none" = "none", "standard error lines" = "se", "lower, fit and upper" = "band")))),
+          res_head("Fitness surface", dl_btn("dl_surfplot", "PNG", "Download the fitness surface as PNG")),
           plotOutput("surf_plot", height = "500px"),
-          div(class = "help-note", "A group's peak is the highest point of the surface within that group's own range: filled when it is a peak of the surface, open when the surface keeps rising past the group's range or the edge of the data."),
-          downloadButton("dl_surfplot", "Download plot (PNG)")),
+          div(class = "help-note", "A group's peak is the highest point of the surface within that group's own range: filled when it is a peak of the surface, open when the surface keeps rising past the group's range or the edge of the data.")),
         tabPanel("Adaptive landscape",
           br(), div(class = "interp", textOutput("opt_txt")),
           fluidRow(
             column(2, br(), checkboxInput("show_opt", "Optimum", TRUE)),
             column(3, br(), checkboxInput("show_mean", "Current mean", TRUE)),
-            column(3, br(), checkboxInput("show_support", "Shade where over half the simulation is outside the data", FALSE)),
+            column(3, conditionalPanel("input.land_view == '2d'", br(),
+              checkboxInput("show_support", "Shade where over half the simulation is outside the data", FALSE))),
             column(4, selectInput("land_theme", "Colours", names(THEMES)))),
-          fluidRow(
-            column(6, plotOutput("land_plot", height = "420px")),
-            column(6, uiOutput("land3d_ui"))),
-          div(class = "help-note", "Mean fitness for each possible population mean. Drag to rotate. Diamond: optimum; circle: current mean."),
-          downloadButton("dl_landplot", "Download 2D plot (PNG)")),
+          res_head("Adaptive landscape",
+                   radioButtons("land_view", tags$span(class = "sr-only", "Landscape view"),
+                                c("2D" = "2d", "3D" = "3d"), inline = TRUE),
+                   conditionalPanel("input.land_view == '2d'",
+                     dl_btn("dl_landplot", "PNG", "Download the 2D landscape as PNG"))),
+          conditionalPanel("input.land_view == '2d'",
+            plotOutput("land_plot", height = "560px"),
+            div(class = "help-note", "Mean fitness for each possible population mean. Diamond: optimum; circle: current mean.")),
+          conditionalPanel("input.land_view == '3d'",
+            uiOutput("land3d_ui"),
+            div(class = "help-note", "Mean fitness for each possible population mean. Drag to rotate. Diamond: optimum; circle: current mean."))),
         tabPanel("Groups",
           br(), uiOutput("groups_ui"))
       )
@@ -599,6 +652,16 @@ server <- function(input, output, session) {
     boot_val(b)
   })
 
+  # ---- Before the first run ----
+  output$intro <- renderText({
+    what <- "Estimates selection differentials and gradients, fitness functions, fitness surfaces and adaptive landscapes."
+    if (identical(input$dataset, "Upload CSV...")) {
+      paste(what, "Upload a CSV with one row per individual, pick the fitness and traits, then press Run analysis.")
+    } else {
+      paste(what, sprintf("%s is loaded: press Run analysis, or pick another dataset or upload a CSV.", input$dataset))
+    }
+  })
+
   # ---- Data tab ----
   output$data_summary <- renderText({
     s <- setup(); f <- detect_family(s$d[[s$fit]])
@@ -635,15 +698,25 @@ server <- function(input, output, session) {
 
   # ---- Selection gradients tab ----
   output$grad_table <- renderTable({ s <- setup(); gradient_table(s$report, s$traits) }, align = "lrrrrr")
-  output$assump_table <- renderTable({
+  assump_checks <- reactive({
     s <- setup()
-    chk <- suppressWarnings(check_selection_assumptions(s$d, s$fit, s$traits, fitness_type = s$ftype, group = s$group_model))
+    suppressWarnings(check_selection_assumptions(s$d, s$fit, s$traits, fitness_type = s$ftype, group = s$group_model))
+  })
+  output$assump_table <- renderTable({
+    chk <- assump_checks()
     data.frame(
       Check = chk$check,
       Statistic = ifelse(is.na(chk$statistic), "", formatC(chk$statistic, digits = 3, format = "g")),
       p = ifelse(is.na(chk$p_value), "", ifelse(chk$p_value < 0.001, "< 0.001", formatC(chk$p_value, digits = 3, format = "f"))),
       Note = chk$note, check.names = FALSE, stringsAsFactors = FALSE)
   }, align = "lrrl")
+  output$dl_assump <- downloadHandler(
+    filename = function() paste0(dl_name("assumption_checks"), ".csv"),
+    content = function(f) {
+      chk <- assump_checks()
+      utils::write.csv(data.frame(check = chk$check, statistic = chk$statistic, p_value = chk$p_value,
+                                  note = chk$note), f, row.names = FALSE)
+    })
   output$corr_table_ui <- renderUI({
     s <- setup(); if (is.null(correlational_table(s$report))) return(NULL)
     tagList(h4(class = "sec", "Correlational selection"), tableOutput("corr_table"))
@@ -743,7 +816,8 @@ server <- function(input, output, session) {
                         k = input$spline_k, bs = s$spline_bs, smoothing = s$spline_sm,
                         bootstrap = TRUE, n_boot = 200, count_family = s$count_family))))
   })
-  uni_plot_obj <- reactive(plot_univariate_fitness(uni_fit(), uni_choice(), classic_plot = input$classic))
+  uni_plot_obj <- reactive(plot_univariate_fitness(uni_fit(), uni_choice(), classic_plot = input$classic) +
+                             labs(x = sd_lab(uni_choice())))
   output$uni_plot <- renderPlot(uni_plot_obj())
   output$dl_uniplot <- downloadHandler(
     filename = function() paste0(dl_name("fitness_function", uni_choice()), ".png"),
@@ -755,14 +829,19 @@ server <- function(input, output, session) {
                                 grid_n = s$grid_n, simulation_n = s$sim_n, clamp = s$clamp)))))
     out
   })
-  output$uni_land_plot <- renderPlot({
+  uni_land_plot_obj <- reactive({
     req(isTRUE(input$uni_land))
     # traits are standardised (within group), so the current mean is 0
     plot_adaptive_landscape(uni_land(), uni_choice(), show_actual_means = FALSE) +
       geom_vline(xintercept = 0, colour = "#e74c3c", alpha = 0.6) +
       annotate("text", x = 0, y = Inf, label = "current mean", vjust = 1.5, hjust = -0.1,
-               size = 3.2, colour = "#e74c3c")
+               size = 3.2, colour = "#e74c3c") +
+      labs(x = sd_lab(uni_choice(), mean = TRUE))
   })
+  output$uni_land_plot <- renderPlot(uni_land_plot_obj())
+  output$dl_unilandplot <- downloadHandler(
+    filename = function() paste0(dl_name("adaptive_landscape", uni_choice()), ".png"),
+    content = function(f) ggsave(f, uni_land_plot_obj(), width = 7, height = 5, dpi = 200))
 
   # ---- Fitness surface and landscape ----
   # Same idea as uni_choice: the pair in use lives in a reactiveVal
@@ -807,8 +886,9 @@ server <- function(input, output, session) {
                                                         uncertainty = unc, fill = fill_name))
     } else plot_correlated_fitness(sf$surf, sf$traits, bins = 12, show_groups = groups, group_lines = lines,
                                    uncertainty = unc, fill = fill_name)
-    suppressMessages(apply_theme(p, input$theme, binary = if (isTRUE(input$show_points)) s$ftype == "binary" else NULL,
-                                 fill_name = fill_name, point_name = s$fit))
+    p <- suppressMessages(apply_theme(p, input$theme, binary = if (isTRUE(input$show_points)) s$ftype == "binary" else NULL,
+                                      fill_name = fill_name, point_name = s$fit))
+    p + labs(x = sd_lab(sf$traits[1]), y = sd_lab(sf$traits[2]))
   })
   output$surf_plot <- renderPlot(surf_plot_obj())
   output$dl_surfplot <- downloadHandler(
@@ -835,7 +915,8 @@ server <- function(input, output, session) {
     p <- plot_adaptive_landscape(sf$land, tr, bins = 12,
                                  show_optimum = isTRUE(input$show_opt), show_actual_means = FALSE,
                                  show_support = isTRUE(input$show_support))
-    p <- suppressMessages(apply_theme(p, input$land_theme, fill_name = "Mean fitness"))
+    p <- suppressMessages(apply_theme(p, input$land_theme, fill_name = "Mean fitness")) +
+      labs(x = sd_lab(tr[1], mean = TRUE), y = sd_lab(tr[2], mean = TRUE))
     if (isTRUE(input$show_mean)) {
       # current population mean is (0, 0) in SD units
       p <- p + annotate("point", x = 0, y = 0, shape = 21, size = 3.5, fill = "#e74c3c", colour = "black") +
@@ -845,8 +926,8 @@ server <- function(input, output, session) {
   })
   output$land_plot <- renderPlot(land_plot_obj())
   output$land3d_ui <- renderUI({
-    if (has_plotly) plotly::plotlyOutput("land3d_plotly", height = "420px")
-    else plotOutput("land3d", height = "420px")
+    if (has_plotly) plotly::plotlyOutput("land3d_plotly", height = "560px")
+    else plotOutput("land3d", height = "560px")
   })
   output$land3d <- renderPlot({
     sf <- surfaces()
@@ -881,7 +962,7 @@ server <- function(input, output, session) {
       title = list(text = "Adaptive landscape (drag to rotate)", font = list(size = 14)),
       showlegend = FALSE, margin = list(l = 0, r = 0, b = 0, t = 40),
       scene = list(
-        xaxis = list(title = paste(tr[1], "(SD)")), yaxis = list(title = paste(tr[2], "(SD)")),
+        xaxis = list(title = sd_lab(tr[1], mean = TRUE)), yaxis = list(title = sd_lab(tr[2], mean = TRUE)),
         zaxis = list(title = "Mean fitness"),
         camera = list(eye = list(x = 1.6, y = -1.6, z = 0.9))))
   })
@@ -895,8 +976,10 @@ server <- function(input, output, session) {
     if (is.null(s$group)) return(div(class = "help-note", "Pick a group and tick 'Estimate per group as well'."))
     if (is.null(s$grouped)) return(div(class = "help-note", "Tick 'Estimate per group as well' and run again."))
     tagList(
-      h4(class = "sec", sprintf("Selection gradients by %s", s$group)),
+      res_head(sprintf("Selection gradients by %s", s$group),
+               dl_btn("dl_groups", "CSV", "Download the gradients by group as CSV")),
       tableOutput("group_table"),
+      res_head("Gradient plot by group", dl_btn("dl_groupplot", "PNG", "Download the plot by group as PNG")),
       plotOutput("group_plot", height = "380px"),
       div(class = "help-note", "Each group standardised on its own.")
     )
@@ -909,7 +992,13 @@ server <- function(input, output, session) {
                p = paste(sub("^= ", "", fmt_p(g$P_Value)), stars(g$P_Value)),
                check.names = FALSE, stringsAsFactors = FALSE)
   }, align = "lllrrr")
-  output$group_plot <- renderPlot({
+  output$dl_groups <- downloadHandler(
+    filename = function() paste0(dl_name("selection_gradients_by", setup()$group), ".csv"),
+    content = function(f) {
+      g <- setup()$grouped; req(!is.null(g))
+      utils::write.csv(as.data.frame(g), f, row.names = FALSE)
+    })
+  group_plot_obj <- reactive({
     s <- setup(); g <- s$grouped
     req(!is.null(g))
     g <- g[g$Type != "Correlational" | length(s$traits) <= 3, ]
@@ -925,6 +1014,10 @@ server <- function(input, output, session) {
       labs(x = "Selection gradient (± 1.96 SE)", y = NULL) + theme_bw() +
       theme(strip.text.y = element_text(angle = 0))
   })
+  output$group_plot <- renderPlot(group_plot_obj())
+  output$dl_groupplot <- downloadHandler(
+    filename = function() paste0(dl_name("selection_gradients_by", setup()$group), ".png"),
+    content = function(f) ggsave(f, group_plot_obj(), width = 7, height = 4.5, dpi = 200))
 
   # ---- Settings used (Data tab) ----
   code_lines <- reactive({
