@@ -331,21 +331,39 @@ dl_btn <- function(id, label, what) downloadButton(id, label, title = what, `ari
 ui <- fluidPage(
   title = "lande",
   tags$head(tags$style(HTML(
-    ".help-note{color:#555;font-size:13px;margin-top:6px}
+    "body{background:#F7F8F5;color:#24332D}
+     a,a:focus{color:#356653}
+     a:hover{color:#2B5444}
+     .well{background:#FFFFFF;border-color:#DEE5DF;box-shadow:none}
+     .nav-tabs{border-bottom-color:#DEE5DF}
+     .nav-tabs>li>a{color:#356653}
+     .nav-tabs>li.active>a,.nav-tabs>li.active>a:hover,.nav-tabs>li.active>a:focus{color:#24332D;border-color:#DEE5DF #DEE5DF transparent}
+     .tab-content{background:#FFFFFF;border:1px solid #DEE5DF;border-top:none;border-radius:0 0 4px 4px;padding:0 16px 16px}
+     .btn-primary,.btn-primary:focus{background:#356653;border-color:#2B5444}
+     .btn-primary:hover,.btn-primary:active,.btn-primary.active{background:#2B5444;border-color:#22433A}
+     .form-control,.selectize-input{border-color:#7D8F85}
+     .form-control:focus,.selectize-input.focus{border-color:#356653;box-shadow:0 0 0 2px rgba(53,102,83,.25)}
+     .selectize-dropdown .active{background:#E3ECE6;color:#24332D}
+     .selectize-control.multi .selectize-input>div{background:#E3ECE6;color:#24332D}
+     .irs--shiny .irs-bar{background:#356653;border-color:#356653}
+     .irs--shiny .irs-single,.irs--shiny .irs-from,.irs--shiny .irs-to{background:#356653}
+     input[type=checkbox],input[type=radio]{accent-color:#356653}
+     .progress-bar{background-color:#356653}
+     .help-note{color:#4F5D57;font-size:13px;margin-top:6px}
      .help-note.warn{color:#8a4b00}
-     .interp{background:#f6f8fa;border-left:3px solid #2c7fb8;padding:10px 14px;margin:10px 0;font-size:14px}
+     .interp{background:#EEF3EF;border-left:3px solid #356653;padding:10px 14px;margin:10px 0;font-size:14px}
      .interp .shiny-text-output{white-space:pre-wrap;padding:0;margin:0}
      .interp ul{margin:0;padding-left:20px}
      .interp li{margin:5px 0}
-     .interp p.foot{margin:10px 0 0;color:#555;font-size:13px}
+     .interp p.foot{margin:10px 0 0;color:#4F5D57;font-size:13px}
      details summary{cursor:pointer;font-weight:600;margin:10px 0}
      h4.sec{margin-top:18px}
      .app-header{display:flex;align-items:center;flex-wrap:wrap;gap:6px 14px;padding:10px 20px 12px}
      .app-header img{height:52px;width:auto}
      .app-header h1{font-size:24px;font-weight:600;margin:0}
-     .app-header .app-sub{color:#555;font-size:14px}
+     .app-header .app-sub{color:#4F5D57;font-size:14px}
      .app-header .app-links{margin-left:auto;display:flex;flex-wrap:wrap;gap:16px;font-size:14px}
-     .intro{background:#f6f8fa;border-left:3px solid #2c7fb8;padding:10px 14px;margin:0 0 12px;font-size:14px}
+     .intro{background:#EEF3EF;border-left:3px solid #356653;padding:10px 14px;margin:0 0 12px;font-size:14px}
      .res-head{display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:8px;margin:18px 0 8px}
      .res-head h4.sec{margin:0}
      .res-head .res-dl{display:flex;align-items:center;flex-wrap:wrap;gap:6px}
