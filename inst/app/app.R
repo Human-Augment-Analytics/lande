@@ -334,24 +334,26 @@ ui <- fluidPage(
     "body{background:#F7F8F5;color:#24332D}
      a,a:focus{color:#356653}
      a:hover{color:#2B5444}
-     .well{background:#FFFFFF;border-color:#DEE5DF;box-shadow:none}
+     .well{background:#F1F4F0;border-color:#DEE5DF;box-shadow:none}
      .nav-tabs{border-bottom-color:#DEE5DF}
      .nav-tabs>li>a{color:#356653}
-     .nav-tabs>li.active>a,.nav-tabs>li.active>a:hover,.nav-tabs>li.active>a:focus{color:#24332D;border-color:#DEE5DF #DEE5DF transparent}
-     .tab-content{background:#FFFFFF;border:1px solid #DEE5DF;border-top:none;border-radius:0 0 4px 4px;padding:0 16px 16px}
+     .nav-tabs>li>a:hover,.nav-tabs>li>a:focus{background:#EEF3EF;border-color:#EEF3EF #EEF3EF #DEE5DF;color:#2B5444}
+     .nav-tabs>li.active>a,.nav-tabs>li.active>a:hover,.nav-tabs>li.active>a:focus{color:#24332D;background:#FFFFFF;border-color:#DEE5DF #DEE5DF transparent;box-shadow:inset 0 3px 0 #356653}
+     .tab-content{background:#FFFFFF;border:1px solid #DEE5DF;border-top:none;border-radius:0 0 4px 4px;padding:0 12px 12px}
      .btn-primary,.btn-primary:focus{background:#356653;border-color:#2B5444}
      .btn-primary:hover,.btn-primary:active,.btn-primary.active{background:#2B5444;border-color:#22433A}
      .form-control,.selectize-input{border-color:#7D8F85}
      .form-control:focus,.selectize-input.focus{border-color:#356653;box-shadow:0 0 0 2px rgba(53,102,83,.25)}
      .selectize-dropdown .active{background:#E3ECE6;color:#24332D}
      .selectize-control.multi .selectize-input>div{background:#E3ECE6;color:#24332D}
-     .irs--shiny .irs-bar{background:#356653;border-color:#356653}
+     .irs--shiny .irs-bar{background:#5E8C78;border-color:#5E8C78}
      .irs--shiny .irs-single,.irs--shiny .irs-from,.irs--shiny .irs-to{background:#356653}
      input[type=checkbox],input[type=radio]{accent-color:#356653}
      .progress-bar{background-color:#356653}
      .help-note{color:#4F5D57;font-size:13px;margin-top:6px}
      .help-note.warn{color:#8a4b00}
      .interp{background:#EEF3EF;border-left:3px solid #356653;padding:10px 14px;margin:10px 0;font-size:14px}
+     .interp.caveat{background:#FBF6EA;border-left-color:#B7862B}
      .interp .shiny-text-output{white-space:pre-wrap;padding:0;margin:0}
      .interp ul{margin:0;padding-left:20px}
      .interp li{margin:5px 0}
@@ -363,6 +365,8 @@ ui <- fluidPage(
      .app-header h1{font-size:24px;font-weight:600;margin:0}
      .app-header .app-sub{color:#4F5D57;font-size:14px}
      .app-header .app-links{margin-left:auto;display:flex;flex-wrap:wrap;gap:16px;font-size:14px}
+     .app-header .app-links a{text-decoration:underline;text-decoration-color:rgba(53,102,83,.45);text-underline-offset:3px}
+     .app-header .app-links a:hover,.app-header .app-links a:focus{text-decoration-color:currentColor}
      .intro{background:#EEF3EF;border-left:3px solid #356653;padding:10px 14px;margin:0 0 12px;font-size:14px}
      .res-head{display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:8px;margin:18px 0 8px}
      .res-head h4.sec{margin:0}
@@ -457,7 +461,7 @@ ui <- fluidPage(
           uiOutput("corr_table_ui"),
           uiOutput("fit_warnings"),
           uiOutput("canon_ui"),
-          div(class = "help-note", "S total selection; β directional; γ quadratic curvature (negative is consistent with stabilising selection, positive with disruptive); γij correlational. * p < 0.05, ** < 0.01, *** < 0.001."),
+          div(class = "help-note", "S total selection; β directional; γ quadratic curvature (negative is consistent with stabilising selection, positive with disruptive); γij correlational. * p < 0.05, ** < 0.01, *** < 0.001."),
           h4(class = "sec", "Summary"),
           uiOutput("interpretation"),
           res_head("Gradient plot", dl_btn("dl_gradplot", "PNG", "Download the gradient plot as PNG")),
@@ -500,7 +504,7 @@ ui <- fluidPage(
           plotOutput("surf_plot", height = "500px"),
           div(class = "help-note", "A group's peak is the highest point of the surface within that group's own range: filled when it is a peak of the surface, open when the surface keeps rising past the group's range or the edge of the data.")),
         tabPanel("Adaptive landscape",
-          br(), div(class = "interp", textOutput("opt_txt")),
+          br(), uiOutput("opt_box"),
           fluidRow(
             column(2, br(), checkboxInput("show_opt", "Optimum", TRUE)),
             column(3, br(), checkboxInput("show_mean", "Current mean", TRUE)),
@@ -798,7 +802,7 @@ server <- function(input, output, session) {
       geom_point(size = 3, colour = "#2c7fb8") +
       facet_grid(Type ~ ., scales = "free_y", space = "free_y") +
       labs(x = paste0("Selection gradient (", ci_lab, ")"), y = NULL) + theme_bw() +
-      theme(strip.text.y = element_text(angle = 0))
+      theme(strip.text.y = element_text(angle = 0), strip.background = element_rect(fill = "#E6EBE7"))
   })
   output$grad_plot <- renderPlot(grad_plot_obj())
   output$boot_note <- renderText({
@@ -913,7 +917,7 @@ server <- function(input, output, session) {
     filename = function() paste0(dl_name("fitness_surface", surf_traits()), ".png"),
     content = function(f) ggsave(f, surf_plot_obj(), width = 7.5, height = 6, dpi = 200))
 
-  output$opt_txt <- renderText({
+  opt_info <- reactive({
     sf <- surfaces(); opt <- sf$land$optimum; tr <- sf$traits; g <- sf$land$grid
     dx <- opt[[tr[1]]]; dy <- opt[[tr[2]]]
     on_edge <- vapply(tr, function(t) {
@@ -922,12 +926,16 @@ server <- function(input, output, session) {
     where <- sprintf("%s = %+.2f SD and %s = %+.2f SD from the current population mean", tr[1], dx, tr[2], dy)
     sup <- sf$land$support
     beyond <- if (is.null(sup)) "" else sprintf(" %.0f%% of the population simulated there lies outside the data.", 100 * sup$at_optimum)
-    if (any(on_edge)) {
+    text <- if (any(on_edge)) {
       sprintf("No interior optimum: mean fitness keeps rising towards %s (highest %.3f).%s", where, opt$.mean_fit, beyond)
     } else {
       sprintf("Optimum at %s, %.2f SD from the current mean (mean fitness %.3f).%s", where, sqrt(dx^2 + dy^2), opt$.mean_fit, beyond)
     }
+    # amber rather than green when the optimum is one to be wary of
+    list(text = text, caveat = any(on_edge) || (!is.null(sup) && sup$at_optimum > 0.5))
   })
+  output$opt_txt <- renderText(opt_info()$text)
+  output$opt_box <- renderUI(div(class = if (opt_info()$caveat) "interp caveat" else "interp", textOutput("opt_txt")))
   land_plot_obj <- reactive({
     sf <- surfaces(); tr <- sf$traits
     p <- plot_adaptive_landscape(sf$land, tr, bins = 12,
@@ -1030,7 +1038,7 @@ server <- function(input, output, session) {
       geom_point(size = 3, position = position_dodge(width = 0.5)) +
       facet_grid(Type ~ ., scales = "free_y", space = "free_y") +
       labs(x = "Selection gradient (± 1.96 SE)", y = NULL) + theme_bw() +
-      theme(strip.text.y = element_text(angle = 0))
+      theme(strip.text.y = element_text(angle = 0), strip.background = element_rect(fill = "#E6EBE7"))
   })
   output$group_plot <- renderPlot(group_plot_obj())
   output$dl_groupplot <- downloadHandler(
