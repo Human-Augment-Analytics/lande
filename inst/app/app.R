@@ -20,6 +20,9 @@ has_plotly <- requireNamespace("plotly", quietly = TRUE)
 has_car <- requireNamespace("car", quietly = TRUE)
 has_performance <- requireNamespace("performance", quietly = TRUE)
 has_zip <- requireNamespace("zip", quietly = TRUE)
+# minutes without a click or keypress before a hosted session is dropped; 0
+# turns the disconnect off
+IDLE_MINUTES <- getOption("lande.idle_minutes", 10)
 
 # fixed seed for the random steps; restores the RNG afterwards
 with_seed <- function(seed, expr) {
@@ -386,11 +389,11 @@ ui <- fluidPage(
      @media (max-width:767px){#land_plot{height:400px !important}}"
   ))),
   tags$head(tags$link(rel = "icon", type = "image/png", href = "favicon.png")),
-  # drop the connection after ten minutes without a click or keypress, so a tab
+  # drop the connection after IDLE_MINUTES without a click or keypress, so a tab
   # left open does not keep the server instance awake
-  tags$head(tags$script(HTML("
+  if (IDLE_MINUTES > 0) tags$head(tags$script(HTML(paste0("
     (function () {
-      var idleMinutes = 10;
+      var idleMinutes = ", IDLE_MINUTES, ";
       var timer;
       function reset() {
         clearTimeout(timer);
@@ -404,7 +407,7 @@ ui <- fluidPage(
       });
       reset();
     })();
-  "))),
+  ")))),
   div(class = "app-header",
       tags$img(src = "logo.png", alt = ""),
       div(tags$h1("lande"), div(class = "app-sub", "Evolutionary selection analysis")),
