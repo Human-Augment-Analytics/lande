@@ -63,6 +63,7 @@ Suggests:
     plotly,
     shiny,
     viridis,
+    zip,
     knitr,
     RhpcBLASctl,
     rmarkdown,

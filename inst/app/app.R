@@ -19,6 +19,7 @@ has_fields <- requireNamespace("fields", quietly = TRUE)
 has_plotly <- requireNamespace("plotly", quietly = TRUE)
 has_car <- requireNamespace("car", quietly = TRUE)
 has_performance <- requireNamespace("performance", quietly = TRUE)
+has_zip <- requireNamespace("zip", quietly = TRUE)
 
 # fixed seed for the random steps; restores the RNG afterwards
 with_seed <- function(seed, expr) {
@@ -51,6 +52,14 @@ file_stem <- function(source) {
   if (bundled %in% names(STEMS)) return(STEMS[[bundled]])
   stem <- gsub("^_+|_+$", "", tolower(gsub("[^A-Za-z0-9]+", "_", sub("\\.[^.]*$", "", basename(source)))))
   if (nzchar(stem)) stem else "data"
+}
+
+# zip a folder: the zip package where there is one (the browser has no zip
+# program), R's own zip otherwise
+zip_folder <- function(zipfile, dir) {
+  if (has_zip) return(invisible(zip::zip(zipfile, basename(dir), root = dirname(dir))))
+  owd <- setwd(dirname(dir)); on.exit(setwd(owd))
+  stopifnot(utils::zip(zipfile, basename(dir), flags = "-r9Xq") == 0)
 }
 
 # Martin analysed the high-density enclosures only
@@ -367,6 +376,7 @@ ui <- fluidPage(
      .app-header .app-links{margin-left:auto;display:flex;flex-wrap:wrap;gap:16px;font-size:14px}
      .app-header .app-links a{text-decoration:underline;text-decoration-color:rgba(53,102,83,.45);text-underline-offset:3px}
      .app-header .app-links a:hover,.app-header .app-links a:focus{text-decoration-color:currentColor}
+     .dl-all{margin-top:8px}
      .intro{background:#EEF3EF;border-left:3px solid #356653;padding:10px 14px;margin:0 0 12px;font-size:14px}
      .res-head{display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:8px;margin:18px 0 8px}
      .res-head h4.sec{margin:0}
@@ -419,6 +429,10 @@ ui <- fluidPage(
           "Untick to treat all groups as one population; the group then only marks means and peaks on the surface, as for several species on one surface."),
       checkboxInput("per_group", "Estimate per group as well", FALSE),
       actionButton("run", "Run analysis", class = "btn-primary", width = "100%"),
+      conditionalPanel("input.run > 0", div(class = "dl-all",
+        downloadButton("dl_all", "Download all (.zip)", class = "btn-block",
+                       title = "Download the data, the R script, the tables and the figures as one zip",
+                       `aria-label` = "Download the data, the R script, the tables and the figures as one zip"))),
       tags$details(
         tags$summary("Advanced settings"),
         selectInput("ftype", "Fitness type", c("detect automatically" = "auto", "binary (0/1)" = "binary", "count" = "count", "continuous" = "continuous")),
@@ -628,6 +642,7 @@ server <- function(input, output, session) {
          report = report, grouped = grouped, warnings = unique(warned), source = current()$source,
          # what was run, for the script, even if the inputs change afterwards
          dataset = input$dataset, file_name = if (!is.null(input$file)) input$file$name,
+         file_path = if (!is.null(input$file)) input$file$datapath,
          ftype_how = if (input$ftype == "auto") "detected" else "set by hand",
          per_group = isTRUE(input$per_group),
          seed = if (is.numeric(input$seed) && !is.na(input$seed)) round(input$seed) else 1,
@@ -732,13 +747,14 @@ server <- function(input, output, session) {
       p = ifelse(is.na(chk$p_value), "", ifelse(chk$p_value < 0.001, "< 0.001", formatC(chk$p_value, digits = 3, format = "f"))),
       Note = chk$note, check.names = FALSE, stringsAsFactors = FALSE)
   }, align = "lrrl")
+  write_assump <- function(f) {
+    chk <- assump_checks()
+    utils::write.csv(data.frame(check = chk$check, statistic = chk$statistic, p_value = chk$p_value,
+                                note = chk$note), f, row.names = FALSE)
+  }
   output$dl_assump <- downloadHandler(
     filename = function() paste0(dl_name("assumption_checks"), ".csv"),
-    content = function(f) {
-      chk <- assump_checks()
-      utils::write.csv(data.frame(check = chk$check, statistic = chk$statistic, p_value = chk$p_value,
-                                  note = chk$note), f, row.names = FALSE)
-    })
+    content = write_assump)
   output$corr_table_ui <- renderUI({
     s <- setup(); if (is.null(correlational_table(s$report))) return(NULL)
     tagList(h4(class = "sec", "Correlational selection"), tableOutput("corr_table"))
@@ -812,13 +828,14 @@ server <- function(input, output, session) {
   })
   dl_name <- function(...) paste(c(file_stem(setup()$source), ...), collapse = "_")
 
+  write_report <- function(f) {
+    s <- setup(); r <- s$report; b <- boot_val()
+    if (!is.null(b)) { m <- match(paste(r$Term, r$Type), paste(b$Term, b$Type)); r$Boot_SE <- b$Boot_SE[m]; r$CI_lower <- b$CI_lower[m]; r$CI_upper <- b$CI_upper[m] }
+    utils::write.csv(as.data.frame(r), f, row.names = FALSE)
+  }
   output$dl_report <- downloadHandler(
     filename = function() paste0(dl_name("selection_gradients"), ".csv"),
-    content = function(f) {
-      s <- setup(); r <- s$report; b <- boot_val()
-      if (!is.null(b)) { m <- match(paste(r$Term, r$Type), paste(b$Term, b$Type)); r$Boot_SE <- b$Boot_SE[m]; r$CI_lower <- b$CI_lower[m]; r$CI_upper <- b$CI_upper[m] }
-      utils::write.csv(as.data.frame(r), f, row.names = FALSE)
-    })
+    content = write_report)
   output$dl_gradplot <- downloadHandler(
     filename = function() paste0(dl_name("selection_gradients"), ".png"),
     content = function(f) ggsave(f, grad_plot_obj(), width = 7, height = 4.5, dpi = 200))
@@ -1018,12 +1035,13 @@ server <- function(input, output, session) {
                p = paste(sub("^= ", "", fmt_p(g$P_Value)), stars(g$P_Value)),
                check.names = FALSE, stringsAsFactors = FALSE)
   }, align = "lllrrr")
+  write_groups <- function(f) {
+    g <- setup()$grouped; req(!is.null(g))
+    utils::write.csv(as.data.frame(g), f, row.names = FALSE)
+  }
   output$dl_groups <- downloadHandler(
     filename = function() paste0(dl_name("selection_gradients_by", setup()$group), ".csv"),
-    content = function(f) {
-      g <- setup()$grouped; req(!is.null(g))
-      utils::write.csv(as.data.frame(g), f, row.names = FALSE)
-    })
+    content = write_groups)
   group_plot_obj <- reactive({
     s <- setup(); g <- s$grouped
     req(!is.null(g))
@@ -1063,7 +1081,7 @@ server <- function(input, output, session) {
     filename = function() paste0(dl_name("selection_analysis"), ".R"),
     content = function(f) writeLines(code_lines(), f))
 
-  output$settings <- renderText({
+  settings_text <- reactive({
     s <- setup(); b <- boot_val()
     # mgcv turns GCV.Cp into UBRE for survival and Poisson counts and into REML
     # for a negative binomial; the fitness function takes the app's fitness
@@ -1099,6 +1117,73 @@ server <- function(input, output, session) {
       sprintf("lande %s, R %s.%s", as.character(utils::packageVersion("lande")), R.version$major, R.version$minor),
       sep = "\n")
   })
+  output$settings <- renderText(settings_text())
+
+  # ---- Everything in one zip ----
+  # the data, the script and every table and figure of the last run in one
+  # folder, so the script runs as it is once unzipped
+  output$dl_all <- downloadHandler(
+    filename = function() paste0(dl_name("selection_analysis"), ".zip"),
+    contentType = "application/zip",
+    content = function(f) {
+      s <- setup()
+      dir <- file.path(tempfile("zip"), dl_name("selection_analysis"))
+      dir.create(dir, recursive = TRUE)
+      on.exit(unlink(dirname(dir), recursive = TRUE), add = TRUE)
+      made <- character(); left_out <- character()
+      # each file on its own, so one that cannot be made leaves out only itself
+      add <- function(name, what, write) {
+        ok <- tryCatch({ write(file.path(dir, name)); file.exists(file.path(dir, name)) }, error = function(e) FALSE)
+        if (ok) made <<- c(made, sprintf("%s: %s", name, what)) else left_out <<- c(left_out, what)
+      }
+      figure <- function(plot, width, height) function(p) ggsave(p, plot(), width = width, height = height, dpi = 200)
+      uploaded <- !s$dataset %in% names(DATA_CODE)
+      withProgress(message = "Preparing the zip", value = 0, {
+        if (uploaded) add(s$file_name, "the data, as uploaded", function(p) stopifnot(file.copy(s$file_path, p)))
+        else add(paste0(file_stem(s$source), ".csv"), "the data, as bundled with lande",
+                 function(p) utils::write.csv(get(file_stem(s$source)), p, row.names = FALSE))
+        add(paste0(dl_name("selection_analysis"), ".R"), "the R code for these results",
+            function(p) writeLines(code_lines(), p))
+        add(paste0(dl_name("selection_gradients"), ".csv"),
+            if (is.null(boot_val())) "selection differentials and gradients" else "selection differentials and gradients, with bootstrap intervals",
+            write_report)
+        add(paste0(dl_name("selection_gradients"), ".png"), "gradient plot", figure(grad_plot_obj, 7, 4.5))
+        add(paste0(dl_name("assumption_checks"), ".csv"), "assumption checks", write_assump)
+        if (!is.null(canon())) add(paste0(dl_name("canonical_axes"), ".csv"), "canonical axes of gamma", function(p) {
+          ca <- canon()
+          utils::write.csv(cbind(as.data.frame(ca$axes), as.data.frame(t(ca$M), check.names = FALSE)), p, row.names = FALSE)
+        })
+        incProgress(0.2, detail = "fitness function")
+        add(paste0(dl_name("fitness_function", uni_choice()), ".png"), "fitness function", figure(uni_plot_obj, 7, 5))
+        if (isTRUE(input$uni_land)) add(paste0(dl_name("adaptive_landscape", uni_choice()), ".png"),
+                                        "adaptive landscape for one trait", figure(uni_land_plot_obj, 7, 5))
+        if (length(s$traits) >= 2) {
+          incProgress(0.3, detail = "fitness surface and landscape")
+          tr <- tryCatch(surf_traits(), error = function(e) NULL)
+          add(paste0(dl_name("fitness_surface", tr), ".png"), "fitness surface", figure(surf_plot_obj, 7.5, 6))
+          add(paste0(dl_name("adaptive_landscape", tr), ".png"), "adaptive landscape", figure(land_plot_obj, 7.5, 6))
+        }
+        if (!is.null(s$grouped)) {
+          add(paste0(dl_name("selection_gradients_by", s$group), ".csv"), "gradients by group", write_groups)
+          add(paste0(dl_name("selection_gradients_by", s$group), ".png"), "gradient plot by group", figure(group_plot_obj, 7, 4.5))
+        }
+        incProgress(0.4, detail = "zipping")
+        writeLines(c(
+          "lande selection analysis",
+          format(Sys.Date(), "%d %B %Y"), "",
+          "Files", paste0("  ", c(made, "README.txt: this file")), "",
+          if (length(left_out)) c("Left out, as they could not be made with these settings", paste0("  ", left_out), ""),
+          "Settings", paste0("  ", strsplit(settings_text(), "\n", fixed = TRUE)[[1]]), "",
+          "To repeat the analysis",
+          "  Install lande, set R's working directory to this folder (in RStudio: Session >",
+          "  Set Working Directory > To Source File Location) and run the R script.",
+          if (uploaded) "  It reads the data file beside it." else "  It loads the data from lande; the CSV is a copy.",
+          "  The figures here follow the display options set in the app, so the plots the",
+          "  script draws can look different."
+        ), file.path(dir, "README.txt"))
+        zip_folder(f, dir)
+      })
+    })
 }
 
 shinyApp(ui, server)
