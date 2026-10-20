@@ -57,6 +57,43 @@ file_stem <- function(source) {
   if (nzchar(stem)) stem else "data"
 }
 
+# read an uploaded table as spreadsheets write it: UTF-8 (with or without a
+# byte-order mark), UTF-16, or Windows' own encoding when the text isn't valid
+# UTF-8 (Excel on Windows); commas, or semicolons with decimal commas (Excel
+# in much of Europe). The read.csv arguments used go with the data, for the
+# R script
+read_upload <- function(path) {
+  size <- file.size(path)
+  if (is.na(size) || size == 0) stop("the file is empty")
+  lead <- readBin(path, "raw", 3)
+  enc <- if (length(lead) >= 2 && (identical(lead[1:2], as.raw(c(0xff, 0xfe))) || identical(lead[1:2], as.raw(c(0xfe, 0xff))))) {
+    "UTF-16"
+  } else if (identical(lead, as.raw(c(0xef, 0xbb, 0xbf)))) {
+    "UTF-8-BOM"
+  } else if (all(validUTF8(suppressWarnings(readLines(path, n = 500, warn = FALSE))))) {
+    "UTF-8"
+  } else {
+    "windows-1252"
+  }
+  con <- file(path, encoding = enc)
+  first <- tryCatch(suppressWarnings(readLines(con, n = 20, warn = FALSE)), finally = close(con))
+  first <- first[nzchar(trimws(first))]
+  if (!length(first)) stop("the file has no rows")
+  # the separator is whichever of comma, semicolon or tab the header has most of
+  n_of <- function(ch) lengths(regmatches(first[1], gregexpr(ch, first[1], fixed = TRUE)))
+  counts <- c(comma = n_of(","), semicolon = n_of(";"), tab = n_of("\t"))
+  args <- switch(names(which.max(counts)),
+                 semicolon = list(sep = ";", dec = ","),
+                 tab = list(sep = "\t", dec = "."),
+                 list(sep = ",", dec = "."))
+  args$fileEncoding <- enc
+  # a blank cell is missing, as a spreadsheet writes it, not a group named ""
+  d <- suppressWarnings(do.call(utils::read.csv, c(list(path, na.strings = c("NA", "")), args)))
+  if (ncol(d) < 2) stop("it has only one column")
+  if (!nrow(d)) stop("it has a header but no rows")
+  list(data = d, read_args = args)
+}
+
 # zip a folder: the zip package where there is one (the browser has no zip
 # program), R's own zip otherwise
 zip_folder <- function(zipfile, dir) {
@@ -192,8 +229,9 @@ correlational_table <- function(r) {
 
 # the R calls that repeat the analysis outside the app, with the current settings
 r_value <- function(x) {
+  # encodeString escapes quotes and backslashes, so any name stays valid R
   if (is.null(x)) "NULL" else if (is.character(x)) {
-    if (length(x) == 1) sprintf('"%s"', x) else sprintf("c(%s)", paste(sprintf('"%s"', x), collapse = ", "))
+    if (length(x) == 1) encodeString(x, quote = '"') else sprintf("c(%s)", paste(encodeString(x, quote = '"'), collapse = ", "))
   } else if (is.logical(x)) as.character(x) else format(x)
 }
 # one call as text, wrapped at 80 characters under its bracket
@@ -238,8 +276,14 @@ r_code <- function(s, dataset, file_name, uni_trait, spline_k, surf_traits, n_bo
   # the surface finds counts in the data even when the fitness type is set otherwise,
   # so it takes the app's count family in any case
   cf_surf <- if (!identical(s$count_family, "poisson")) r_value(s$count_family)
-  load <- if (dataset %in% names(DATA_CODE)) DATA_CODE[[dataset]] else
-    sprintf('dat <- read.csv("%s", na.strings = c("NA", ""))', file_name %||% "your_file.csv")
+  # an upload is read with the separator and encoding the app found in it
+  load <- if (dataset %in% names(DATA_CODE)) DATA_CODE[[dataset]] else {
+    a <- s$read_args %||% list()
+    extra <- c(if (identical(a$sep, ";")) 'sep = ";", dec = ","', if (identical(a$sep, "\t")) 'sep = "\\t"',
+               if (!is.null(a$fileEncoding) && a$fileEncoding != "UTF-8") paste("fileEncoding =", r_value(a$fileEncoding)))
+    sprintf('dat <- read.csv(%s, na.strings = c("NA", "")%s)', r_value(file_name %||% "your_file.csv"),
+            paste0(", ", extra, collapse = ""))
+  }
   lines <- c(
     "library(lande)", "", load,
     paste("traits <-", r_value(s$traits)),
@@ -421,7 +465,7 @@ ui <- fluidPage(
       h4("Data"),
       selectInput("dataset", "Dataset", DATASETS),
       conditionalPanel("input.dataset == 'Upload CSV...'",
-        fileInput("file", "CSV file", accept = ".csv")),
+        fileInput("file", "CSV file", accept = c(".csv", ".tsv", ".txt"))),
       h4("Design"),
       selectInput("fitness", "Fitness", NULL),
       div(class = "help-note", textOutput("fitness_hint")),
@@ -552,16 +596,22 @@ server <- function(input, output, session) {
   current <- reactive({
     if (input$dataset == "Upload CSV...") {
       req(input$file)
-      # a blank cell is missing, as a spreadsheet writes it, not a group named ""
-      c(list(data = utils::read.csv(input$file$datapath, na.strings = c("NA", "")), fitness = NULL, traits = NULL, group = NULL),
-        source = input$file$name)
+      got <- tryCatch(read_upload(input$file$datapath), error = function(e) e)
+      validate(need(!inherits(got, "error"), sprintf(
+        "Couldn't read %s as a CSV file: %s. Save it from your spreadsheet as CSV and upload it again.",
+        input$file$name, if (inherits(got, "error")) conditionMessage(got) else "")))
+      list(data = got$data, fitness = NULL, traits = NULL, group = NULL,
+           source = input$file$name, read_args = got$read_args)
     } else c(load_dataset(input$dataset), source = paste(input$dataset, "(bundled)"))
   })
 
   # Defaults for an uploaded file: a survival-like or 0/1 column as fitness, a
   # year or site column as group, and measured traits (not ids or years) as traits
   observeEvent(current(), {
-    d <- current(); nm <- names(d$data); nums <- numeric_cols(d$data)
+    # a file that couldn't be read says so in the fitness hint; nothing to set here
+    d <- tryCatch(current(), error = function(e) NULL)
+    req(d)
+    nm <- names(d$data); nums <- numeric_cols(d$data)
     looks <- function(cols, pattern) cols[grepl(pattern, cols, ignore.case = TRUE)]
     n_unique <- function(v) length(unique(d$data[[v]][!is.na(d$data[[v]])]))
     is_01 <- function(v) all(d$data[[v]][!is.na(d$data[[v]])] %in% c(0, 1))
@@ -604,15 +654,19 @@ server <- function(input, output, session) {
   setup <- eventReactive(input$run, {
     d <- current()$data; fit <- input$fitness; traits <- input$traits
     grp <- if (input$group == "(none)") NULL else input$group
+    # one check at a time, so the message names the first problem
     validate(
       need(length(traits) >= 1, "Pick at least one trait."),
       need(!fit %in% traits, "Fitness column can't also be a trait."),
-      need(all(c(fit, traits) %in% names(d)), "Columns not found."),
-      need(is.numeric(d[[fit]]) || is.logical(d[[fit]]), "Fitness column must be numeric (0/1 survival or a numeric measure)."),
-      need(all(vapply(d[traits], is.numeric, logical(1))), "Trait columns must be numeric."),
-      need(all(vapply(d[traits], function(x) length(unique(x[!is.na(x)])) > 2, logical(1))),
-           "Each trait needs more than two distinct values; a 0/1 column cannot be a trait.")
+      need(all(c(fit, traits) %in% names(d)), "Columns not found.")
     )
+    validate(
+      need(is.numeric(d[[fit]]) || is.logical(d[[fit]]), "Fitness column must be numeric (0/1 survival or a numeric measure)."),
+      need(all(vapply(d[traits], is.numeric, logical(1))), "Trait columns must be numeric.")
+    )
+    validate(need(sum(stats::complete.cases(d[, c(fit, traits)])) >= 20, "Need at least 20 individuals with complete data."))
+    validate(need(all(vapply(d[traits], function(x) length(unique(x[!is.na(x)])) > 2, logical(1))),
+                  "Each trait needs more than two distinct values; a 0/1 column cannot be a trait."))
     # rows need fitness and every trait; the package keeps unlabelled rows as one more group
     d <- d[stats::complete.cases(d[, c(fit, traits)]), ]
     validate(need(nrow(d) >= 20, "Need at least 20 individuals with complete data."))
@@ -645,6 +699,7 @@ server <- function(input, output, session) {
          report = report, grouped = grouped, warnings = unique(warned), source = current()$source,
          # what was run, for the script, even if the inputs change afterwards
          dataset = input$dataset, file_name = if (!is.null(input$file)) input$file$name,
+         read_args = current()$read_args,
          file_path = if (!is.null(input$file)) input$file$datapath,
          ftype_how = if (input$ftype == "auto") "detected" else "set by hand",
          per_group = isTRUE(input$per_group),

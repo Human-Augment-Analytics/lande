@@ -1,5 +1,7 @@
 # lande (development version)
 
+* The app reads semicolon, tab and UTF-16 CSV files and Excel's Windows
+  encoding, and says why a file can't be read.
 * The app can download the whole analysis as one zip, with the data and an R
   script that reruns it.
 * The app has a new layout built around its results, each with its own
