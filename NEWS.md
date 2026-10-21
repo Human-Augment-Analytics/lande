@@ -1,5 +1,8 @@
 # lande (development version)
 
+* `adaptive_landscape()` gains `method = "lattice"`, the same draws as before
+  but 4 to 10 times faster, and `method = "convolve"`, a Gaussian convolution
+  with no simulation noise. The default is unchanged.
 * The app reads semicolon, tab and UTF-16 CSV files and Excel's Windows
   encoding, and says why a file can't be read.
 * The app can download the whole analysis as one zip, with the data and an R

@@ -14,7 +14,9 @@ adaptive_landscape(
   grid_n = 50,
   custom_range = NULL,
   clamp = TRUE,
-  support_warn = 0.25
+  support_warn = 0.25,
+  method = c("simulate", "lattice", "convolve"),
+  lattice_n = 200
 )
 }
 \arguments{
@@ -38,7 +40,8 @@ is a curve; with two it is the \code{$model} of
 \item{custom_range}{Optional list specifying custom ranges for the traits.}
 
 \item{clamp}{Logical; if \code{TRUE} (the default) simulated fitness from a
-thin-plate model is held inside the range of the fitness type before
+thin-plate model (with \code{"convolve"}, its fitness on the lattice) is
+held inside the range of the fitness type before
 averaging: 0 to 1 for survival, at least 0 for counts. Continuous fitness
 is left alone, and a GAM is unaffected because its link already respects
 the range. The run message says how many values were held.}
@@ -46,18 +49,77 @@ the range. The run message says how many values were held.}
 \item{support_warn}{Share of the population simulated at the optimum that
 may fall outside the data before the optimum is flagged as
 extrapolated. Default is 0.25.}
+
+\item{method}{How the mean fitness of each population is worked out:
+\code{"simulate"} (the default), \code{"lattice"} or \code{"convolve"}.
+See Details.}
+
+\item{lattice_n}{Nodes per trait of the lattice the \code{"lattice"}
+method predicts the fitness surface on, for two traits (at least 8). One
+trait uses \code{max(10 * lattice_n, 1000)} nodes. Default is 200.}
 }
 \value{
 An object of class \code{"adaptive_landscape"}. Its
   \code{optimum_edge} is \code{TRUE} when the highest mean fitness lies on
   the edge of the grid, where the landscape may keep rising beyond it.
+  \code{method} is the method used (which can differ from the one asked
+  for when it falls back), \code{lattice} describes the lattice
+  of the \code{"lattice"} and \code{"convolve"} methods (nodes and spacing
+  per trait, number of predictions) and \code{lattice_check} the
+  interpolation check of the \code{"lattice"} method: draws predicted
+  exactly, the largest error among them, the tolerance, whether it
+  passed, the final nodes per trait, the number of refinements and the
+  number of draws predicted directly. \code{clipped} counts the fitness
+  values held by \code{clamp}: simulated individuals for
+  \code{"simulate"} and \code{"lattice"}, lattice nodes for
+  \code{"convolve"}.
 }
 \description{
 Computes the adaptive landscape (mean fitness as a function of population mean phenotype)
 using a fitted individual-level fitness model.
 }
 \details{
-For a single trait the grid also carries \code{.ind_fit}, the
+All three methods estimate the same quantity, the mean fitness of
+  a population whose traits are normally distributed around each grid
+  point with the within-population (co)variance:
+  \itemize{
+    \item \code{"simulate"} draws \code{simulation_n} individuals at every
+      grid point, predicts the fitness of each one from the model and
+      averages them (Monte Carlo). It is the slowest, and the answer
+      moves a little with the random seed.
+    \item \code{"lattice"} makes the same random draws, in the same order,
+      but predicts the fitness surface once on a fine lattice and
+      interpolates it for every individual (cubic interpolation along
+      each trait). For a seed it gives nearly the
+      same numbers as \code{"simulate"}, several times faster, and leaves
+      the random number stream where \code{"simulate"} would. A sample of
+      the draws is also predicted exactly to check the interpolation; the
+      lattice is made finer if the error is more than 0.1\% of the range
+      of fitness over the grid of population means, and the result's
+      \code{lattice_check} records it. When the lattice would need as many
+      predictions as the draws, or a finer one would cost more than
+      predicting the remaining draws, the draws are predicted directly as
+      in \code{"simulate"}.
+    \item \code{"convolve"} draws nothing. It evaluates the fitness surface
+      on a lattice that contains every grid point and averages it with the
+      weights of the normal distribution (a convolution), so there is no
+      simulation noise, the landscape is smooth and the result does not
+      depend on the seed. \code{simulation_n} is not used. The lattice is
+      at most a quarter of each trait's SD apart, and finer when the
+      traits are strongly correlated, and the weights reach 5 SD around
+      each grid point (8 SD for a GAM with a log link, whose fitness can
+      climb steeply). Its cost depends on the grid and the variance, not
+      on \code{simulation_n}: when the distribution is very narrow next to
+      the grid step, or the traits are almost perfectly correlated, it
+      would need more predictions than simulating \code{simulation_n}
+      individuals at every grid point, and the \code{"lattice"} method is
+      used instead (with a message).
+  }
+  The \code{"lattice"} method interpolates a GAM on the scale of its link
+  function and transforms the result back, so fitness stays inside the
+  range the link allows.
+
+  For a single trait the grid also carries \code{.ind_fit}, the
   individual fitness function evaluated at each population mean, for
   drawing the two curves together (see \code{plot_adaptive_landscape()}).
 
@@ -67,7 +129,9 @@ For a single trait the grid also carries \code{.ind_fit}, the
   share of each simulated population falling outside the convex hull of the
   observed trait pairs, or outside the observed range for one trait, and the
   result's \code{support} gives that share over the whole grid and at the
-  optimum.
+  optimum. With \code{"convolve"} it is the share of each population's
+  normal distribution lying outside the data, taking the part of each
+  lattice cell that lies outside.
 }
 \examples{
 prep <- prepare_selection_data(bumpus, "survival", c("total_length", "weight"))
@@ -80,4 +144,9 @@ land$optimum
 uni <- univariate_spline(prep, "survival", "total_length")
 land1 <- adaptive_landscape(prep, uni$model, "total_length", simulation_n = 100, grid_n = 30)
 plot_adaptive_landscape(land1, "total_length")
+
+# the same landscape without simulation noise
+land_c <- adaptive_landscape(prep, surf$model, c("total_length", "weight"),
+                             grid_n = 15, method = "convolve")
+land_c$optimum
 }

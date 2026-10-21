@@ -306,7 +306,8 @@ r_code <- function(s, dataset, file_name, uni_trait, spline_k, surf_traits, n_bo
     r_call("plot_univariate_fitness", "uni", r_value(uni_trait)),
     if (uni_land) c(sprintf("set.seed(%d)", s$seed),
                     r_call("adaptive_landscape", "prep", "uni$model", r_value(uni_trait), group_col = grp, grid_n = s$grid_n,
-                           simulation_n = s$sim_n, clamp = r_value(s$clamp), assign = "land1"),
+                           simulation_n = s$sim_n, clamp = r_value(s$clamp), method = r_value(s$land_method),
+                           assign = "land1"),
                     r_call("plot_adaptive_landscape", "land1", r_value(uni_trait)))
   )
   if (length(surf_traits) == 2 && surf_traits[1] != surf_traits[2]) {
@@ -319,7 +320,7 @@ r_code <- function(s, dataset, file_name, uni_trait, spline_k, surf_traits, n_bo
       r_call("plot_correlated_fitness", "surf", tr, uncertainty = r_value(uncertainty)),
       sprintf("set.seed(%d)", s$seed),
       r_call("adaptive_landscape", "prep", "surf$model", tr, group_col = grp, grid_n = s$grid_n,
-             simulation_n = s$sim_n, clamp = r_value(s$clamp), assign = "land"),
+             simulation_n = s$sim_n, clamp = r_value(s$clamp), method = r_value(s$land_method), assign = "land"),
       r_call("plot_adaptive_landscape", "land", tr))
   }
   lines
@@ -487,6 +488,11 @@ ui <- fluidPage(
                      c("GAM (mgcv)" = "gam", "Thin-plate spline (fields)" = "tps"), inline = TRUE),
         sliderInput("surf_grid", "Surface grid", 20, 80, 50, step = 10),
         sliderInput("grid_n", "Landscape grid", 15, 60, 40, step = 5),
+        selectInput("land_method", "Landscape method",
+                    c("Simulate (as before)" = "simulate", "Lattice (faster, same draws)" = "lattice",
+                      "Gaussian convolution" = "convolve")),
+        div(class = "help-note",
+            "Gaussian convolution draws no individuals: the simulated individuals below do not apply to it, and its landscape does not change with the seed."),
         sliderInput("sim_n", "Simulated individuals per grid point", 100, 1000, 300, step = 100),
         numericInput("n_boot", "Bootstrap resamples", 500, 100, 5000, 100),
         numericInput("seed", "Random seed", 1, 1, 1e6, 1),
@@ -712,7 +718,7 @@ server <- function(input, output, session) {
          surf_bs = input$surf_bs %||% "tp", surf_sm = input$surf_sm %||% "REML",
          spline_bs = input$spline_bs %||% "cr", spline_sm = input$spline_sm %||% "GCV.Cp",
          count_family = input$count_family %||% "poisson",
-         grid_n = input$grid_n, sim_n = input$sim_n)
+         grid_n = input$grid_n, sim_n = input$sim_n, land_method = input$land_method %||% "simulate")
   })
 
   boot_val <- reactiveVal(NULL)
@@ -923,7 +929,8 @@ server <- function(input, output, session) {
     s <- setup(); u <- uni_fit()
     with_seed(s$seed, suppressWarnings(suppressMessages(capture.output(
       out <- adaptive_landscape(s$prep, u$model, uni_choice(), group_col = s$group_model,
-                                grid_n = s$grid_n, simulation_n = s$sim_n, clamp = s$clamp)))))
+                                grid_n = s$grid_n, simulation_n = s$sim_n, clamp = s$clamp,
+                                method = s$land_method)))))
     out
   })
   uni_land_plot_obj <- reactive({
@@ -966,7 +973,8 @@ server <- function(input, output, session) {
                                  count_family = s$count_family)))
     land <- with_seed(s$seed, suppressWarnings(suppressMessages(capture.output(
       out <- adaptive_landscape(s$prep, surf$model, tr, group_col = s$group_model,
-                                grid_n = s$grid_n, simulation_n = s$sim_n, clamp = s$clamp)))))
+                                grid_n = s$grid_n, simulation_n = s$sim_n, clamp = s$clamp,
+                                method = s$land_method)))))
     list(surf = surf, land = out, traits = tr)
   })
   surf_plot_obj <- reactive({
@@ -1000,7 +1008,9 @@ server <- function(input, output, session) {
     }, logical(1))
     where <- sprintf("%s = %+.2f SD and %s = %+.2f SD from the current population mean", tr[1], dx, tr[2], dy)
     sup <- sf$land$support
-    beyond <- if (is.null(sup)) "" else sprintf(" %.0f%% of the population simulated there lies outside the data.", 100 * sup$at_optimum)
+    # the convolution draws no population, it weighs the whole distribution
+    beyond <- if (is.null(sup)) "" else sprintf(" %.0f%% of the population%s there lies outside the data.", 100 * sup$at_optimum,
+                                                if (identical(sf$land$method, "convolve")) "" else " simulated")
     text <- if (any(on_edge)) {
       sprintf("No interior optimum: mean fitness keeps rising towards %s (highest %.3f).%s", where, opt$.mean_fit, beyond)
     } else {
@@ -1169,7 +1179,11 @@ server <- function(input, output, session) {
               s$surf_grid, s$surf_grid, paste0(if (s$surf_full) "drawn over the full grid" else "blank outside the data",
                 if (!is.null(s$surf_far)) sprintf(", cells farther than %s of the range from any individual blank", s$surf_far) else "",
                 if (!is.null(s$group)) paste0(", group means and peaks marked", if (s$within_group) ", group as a fixed effect" else ", one surface for all groups") else "")),
-      sprintf("Adaptive landscape: %d x %d grid, %d simulated individuals per point", s$grid_n, s$grid_n, s$sim_n),
+      sprintf("Adaptive landscape: %d x %d grid, %s", s$grid_n, s$grid_n,
+              switch(s$land_method,
+                     convolve = "Gaussian convolution",
+                     lattice = sprintf("%d simulated individuals per point, fitness interpolated from a lattice", s$sim_n),
+                     sprintf("%d simulated individuals per point, fitness predicted for each", s$sim_n))),
       if (is.null(b)) "Bootstrap: not run" else sprintf("Bootstrap: %d resamples", attr(b, "n_boot")),
       sprintf("Random seed: %d", s$seed),
       sprintf("lande %s, R %s.%s", as.character(utils::packageVersion("lande")), R.version$major, R.version$minor),
