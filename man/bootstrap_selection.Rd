@@ -43,8 +43,10 @@ A data frame with one row per coefficient and columns \code{Term},
   \code{Type}, \code{Estimate} (point estimate on the full data),
   \code{Boot_SE}, \code{CI_lower}, \code{CI_upper}, \code{P_Value}, and
   \code{N_Boot} (usable resamples for that coefficient). \code{P_Value} is
-  the parametric p-value from the point-estimate fit (OLS t-test, or the
-  logistic-GLM Wald test for binary fitness), not a bootstrap p-value.
+  the parametric p-value from the point-estimate fit (the OLS t-test for
+  continuous fitness, the Wald test of the logistic GLM for binary fitness
+  or of the Poisson or negative binomial GLM for counts), not a bootstrap
+  p-value.
 }
 \description{
 Resamples individuals with replacement and re-estimates the selection
@@ -54,10 +56,17 @@ confidence intervals for every coefficient (beta, gamma, gamma_ij).
 \details{
 Each resample goes through the whole procedure again: with
   \code{standardize = TRUE} the traits are restandardised, and fitness is made
-  relative to the resample's own mean, before both models are refitted, so
-  the intervals carry the uncertainty in the standardisation as well as in
-  the fit. Resamples whose fit fails are dropped, and \code{N_Boot} counts
-  the ones that were used.
+  relative to the resample's own mean, before both least-squares models are
+  refitted, so the intervals carry the uncertainty in the standardisation as
+  well as in the fit. Only those two models are refitted on each resample;
+  the GLMs that supply the p-values (logistic for binary fitness, Poisson or
+  negative binomial for counts) are fitted once, on the full data, so a GLM
+  that would fail on some resample cannot remove it. Resamples whose
+  least-squares fit fails are dropped, and \code{N_Boot} counts the ones
+  that were used. If the column names keep this shortcut from reproducing
+  the point estimate exactly (a trait named like an R expression, say),
+  each resample is refitted with all of \code{selection_coefficients()}
+  instead, which is slower and drops a resample whose GLM fails.
 
   When \code{group} is given, individuals are resampled within each
   group so every resample keeps the original group sizes. A resample in

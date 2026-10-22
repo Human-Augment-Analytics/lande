@@ -71,6 +71,25 @@ test_that("single-trait analyses do not emit a VIF warning", {
   expect_false(any(grepl("VIF", msgs)))
 })
 
+test_that("an exact least-squares fit does not stop selection_coefficients()", {
+  # 3 birds for the 3 coefficients of the quadratic model: no residual degrees
+  # of freedom, so its VIFs are NaN, which the collinearity check used to trip on
+  skip_if_not_installed("car")
+  d <- data.frame(w = c(1, 2, 0.5), x = c(0.1, 0.7, 1.9))
+  msgs <- character(0)
+  res <- withCallingHandlers(
+    suppressMessages(selection_coefficients(d, "w", "x", fitness_type = "continuous")),
+    warning = function(w) {
+      msgs <<- c(msgs, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    }
+  )
+  expect_identical(res$Term, c("x", "x\u00b2"))
+  expect_true(all(is.finite(res$Beta_Coefficient)))
+  expect_true(is.nan(res$Standard_Error[2]))
+  expect_false(any(grepl("Collinear", msgs)))
+})
+
 test_that("rows with a missing group label are kept and standardised", {
   df <- sim_data(n = 40)
   df$grp[c(3, 7, 11)] <- NA

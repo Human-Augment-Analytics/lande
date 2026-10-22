@@ -1,5 +1,10 @@
 # lande (development version)
 
+* `bootstrap_selection()` refits only the least-squares gradients on each
+  resample and runs 40 to 55 times faster. A resample is no longer dropped
+  when its p-value model would fail to fit.
+* `selection_coefficients()` no longer fails when a least-squares fit is
+  exact.
 * `adaptive_landscape()` gains `method = "lattice"`, the same draws as before
   but 4 to 10 times faster, and `method = "convolve"`, a Gaussian convolution
   with no simulation noise. The default is unchanged.

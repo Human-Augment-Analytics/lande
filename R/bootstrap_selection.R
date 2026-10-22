@@ -4,7 +4,9 @@
 # Bootstrap standard errors and confidence intervals for selection gradients.
 # Individuals are resampled with replacement and the whole estimation procedure
 # (standardisation, relativisation, OLS) is repeated on each resample, so the
-# intervals include standardising and relativising as well as the fit.
+# intervals include standardising and relativising as well as the fit. Only
+# the least-squares gradients are refitted; the p-value models are fitted
+# once, on the full data.
 # ============================================================================
 
 #' Bootstrap selection gradients
@@ -19,10 +21,17 @@
 #'
 #' @details Each resample goes through the whole procedure again: with
 #'   \code{standardize = TRUE} the traits are restandardised, and fitness is made
-#'   relative to the resample's own mean, before both models are refitted, so
-#'   the intervals carry the uncertainty in the standardisation as well as in
-#'   the fit. Resamples whose fit fails are dropped, and \code{N_Boot} counts
-#'   the ones that were used.
+#'   relative to the resample's own mean, before both least-squares models are
+#'   refitted, so the intervals carry the uncertainty in the standardisation as
+#'   well as in the fit. Only those two models are refitted on each resample;
+#'   the GLMs that supply the p-values (logistic for binary fitness, Poisson or
+#'   negative binomial for counts) are fitted once, on the full data, so a GLM
+#'   that would fail on some resample cannot remove it. Resamples whose
+#'   least-squares fit fails are dropped, and \code{N_Boot} counts the ones
+#'   that were used. If the column names keep this shortcut from reproducing
+#'   the point estimate exactly (a trait named like an R expression, say),
+#'   each resample is refitted with all of \code{selection_coefficients()}
+#'   instead, which is slower and drops a resample whose GLM fails.
 #'
 #'   When \code{group} is given, individuals are resampled within each
 #'   group so every resample keeps the original group sizes. A resample in
@@ -44,8 +53,10 @@
 #'   \code{Type}, \code{Estimate} (point estimate on the full data),
 #'   \code{Boot_SE}, \code{CI_lower}, \code{CI_upper}, \code{P_Value}, and
 #'   \code{N_Boot} (usable resamples for that coefficient). \code{P_Value} is
-#'   the parametric p-value from the point-estimate fit (OLS t-test, or the
-#'   logistic-GLM Wald test for binary fitness), not a bootstrap p-value.
+#'   the parametric p-value from the point-estimate fit (the OLS t-test for
+#'   continuous fitness, the Wald test of the logistic GLM for binary fitness
+#'   or of the Poisson or negative binomial GLM for counts), not a bootstrap
+#'   p-value.
 #' @export
 #'
 #' @examples
@@ -83,34 +94,66 @@ bootstrap_selection <- function(data,
     )
   }
 
-  # Point estimate on the full data; its warnings are shown.
+  # Point estimate on the full data, with its p-values; its warnings are shown.
   point <- suppressMessages(fit_once(data))
   keys <- paste(point$Term, point$Type)
+  n <- nrow(data)
 
-  # A resample is unusable if it errors, or if a trait lost its variance in
-  # some group (prepare_selection_data then centres only, which would put a
-  # false z = 0 into the fit).
-  fit_resample <- function(d) {
-    degenerate <- FALSE
-    res <- tryCatch(
-      withCallingHandlers(
-        suppressMessages(fit_once(d)),
-        warning = function(w) {
-          if (grepl("no variance|Zero-variance", conditionMessage(w))) degenerate <<- TRUE
-          invokeRestart("muffleWarning")
-        }
-      ),
+  # The shortcut: a resample refits only the two least-squares models, with
+  # .ols_gradients() on the raw columns of the resampled rows, and none of the
+  # GLMs and checks that give the point estimate its p-values. NULL for an
+  # unusable resample: a trait lost its variance in some group (preparing the
+  # data then centres only, which would put a false z = 0 into the fit), or
+  # the fit failed.
+  src <- if (is.data.frame(data)) data else data.frame(data, check.names = FALSE)
+  cols <- lapply(stats::setNames(nm = unique(c(fitness_col, trait_cols))), function(v) src[[v]])
+  codes <- .group_codes(src, group)
+  pos <- match(keys, .gradient_keys(trait_cols))
+  gradients <- function(rows, drop_degenerate) {
+    g <- tryCatch(
+      suppressWarnings(.ols_gradients(
+        lapply(cols, `[`, rows), fitness_col, trait_cols, codes[rows],
+        standardize = standardize,
+        use_relative_for_fit = use_relative_for_fit,
+        drop_degenerate = drop_degenerate
+      )),
       error = function(e) NULL
     )
-    if (degenerate) NULL else res
+    if (is.null(g)) NULL else as.vector(g[pos])
+  }
+
+  # The shortcut is used only if it gives the point estimate's gradients bit
+  # for bit on the full data. Column names can keep it from doing so: the
+  # model formula reads a trait named "log(x)" as log() of x, and the
+  # preparation overwrites a trait named like the relative-fitness column.
+  # Then every resample goes through selection_coefficients(), as it always
+  # did; this is also the check that the two never drift apart.
+  fit_resample <- if (identical(gradients(seq_len(n), FALSE), as.vector(point$Beta_Coefficient))) {
+    function(rows) gradients(rows, drop_degenerate = TRUE)
+  } else {
+    function(rows) {
+      d <- data[rows, , drop = FALSE]
+      degenerate <- FALSE
+      res <- tryCatch(
+        withCallingHandlers(
+          suppressMessages(fit_once(d)),
+          warning = function(w) {
+            if (grepl("no variance|Zero-variance", conditionMessage(w))) degenerate <<- TRUE
+            invokeRestart("muffleWarning")
+          }
+        ),
+        error = function(e) NULL
+      )
+      if (degenerate || is.null(res)) return(NULL)
+      res$Beta_Coefficient[match(keys, paste(res$Term, res$Type))]
+    }
   }
 
   # Resample within groups when there are groups, so each resample keeps the
   # original group sizes. Rows with no group label are their own group, as
   # when the data are prepared; split() would drop them, even after addNA(),
   # so it splits on the level codes.
-  n <- nrow(data)
-  strata <- if (is.null(group)) rep(1L, n) else as.integer(addNA(factor(data[[group]]), ifany = TRUE))
+  strata <- if (is.null(group)) rep(1L, n) else codes
   strata_rows <- split(seq_len(n), strata, drop = TRUE)
   resample_rows <- function() {
     unlist(lapply(strata_rows, function(r) r[sample.int(length(r), length(r), replace = TRUE)]),
@@ -121,9 +164,9 @@ bootstrap_selection <- function(data,
                  dimnames = list(keys, NULL))
 
   for (b in seq_len(n_boot)) {
-    res <- fit_resample(data[resample_rows(), , drop = FALSE])
+    res <- fit_resample(resample_rows())
     if (is.null(res)) next
-    boot[, b] <- res$Beta_Coefficient[match(keys, paste(res$Term, res$Type))]
+    boot[, b] <- res
   }
 
   # Usable resamples per coefficient. A term that drops out of some fits (e.g. a
@@ -156,4 +199,114 @@ bootstrap_selection <- function(data,
   attr(out, "n_boot") <- n_min
   attr(out, "conf") <- conf
   out
+}
+
+#' @noRd
+# internal utility: "Term Type" for every gradient of the second-order model,
+# named as selection_coefficients() names them and in the order
+# .ols_gradients() returns them: linear, quadratic, then each pair of traits
+# in combn() order.
+.gradient_keys <- function(trait_cols) {
+  pairs <- if (length(trait_cols) >= 2) utils::combn(trait_cols, 2, simplify = FALSE) else list()
+  c(paste(trait_cols, "Linear"),
+    paste(paste0(trait_cols, "\u00b2"), "Quadratic"),
+    vapply(pairs, function(p) paste(paste(p[1], "\u00d7", p[2]), "Correlational"), character(1)))
+}
+
+#' @noRd
+# internal utility: each row's group as an integer code, with a missing label
+# as one more group, as prepare_selection_data() groups the rows; NULL
+# without a group.
+.group_codes <- function(data, group) {
+  if (is.null(group)) return(NULL)
+  as.integer(addNA(factor(data[[group]]), ifany = TRUE))
+}
+
+#' @noRd
+# internal utility: the selection gradients alone, by least squares, with
+# none of the p-value models; bootstrap_selection() refits them on every
+# resample.
+#
+# `cols` is a named list of the raw fitness and trait columns and `codes` the
+# group of each row (from .group_codes()). The traits are standardised and
+# fitness made relative within groups, over the rows with complete fitness
+# and traits, with prepare_selection_data()'s own utilities (.scaling_within()
+# and .standardise(), .mean_fitness_within() and .relativise()); then the
+# rows the gradient models keep are fitted, linear and quadratic, on the
+# design matrices lm() builds from the formulas
+# in analyze_linear_selection() and analyze_nonlinear_selection(), with the
+# same QR routine and tolerance, and the quadratic coefficients are doubled.
+#
+# Returns the gradients in the order of .gradient_keys(trait_cols), NA for a
+# term dropped as aliased, with attribute "degenerate" TRUE when a trait has
+# no variance in some group (prepare_selection_data() warns and only centres
+# it there). With drop_degenerate = TRUE such data return NULL instead. NULL
+# also when fitting relative fitness and no group has a usable mean fitness.
+.ols_gradients <- function(cols, fitness_col, trait_cols, codes = NULL,
+                           standardize = TRUE, use_relative_for_fit = TRUE,
+                           drop_degenerate = FALSE) {
+  w <- cols[[fitness_col]]
+  if (is.logical(w) || is.integer(w)) cols[[fitness_col]] <- as.numeric(w)
+  cc <- !is.na(cols[[fitness_col]])
+  for (t in trait_cols) cc <- cc & !is.na(cols[[t]])
+  groups <- .group_rows(codes, length(cc))
+
+  degenerate <- FALSE
+  if (standardize) {
+    for (t in trait_cols) {
+      s <- .scaling_within(cols[[t]], cc, groups)
+      unscalable <- !any(s$scalable[cc])
+      if (unscalable || any(!s$scalable[cc])) {
+        if (drop_degenerate) return(NULL)
+        degenerate <- TRUE
+        if (unscalable) next
+      }
+      cols[[t]] <- .standardise(cols[[t]], s)
+    }
+  }
+
+  if (use_relative_for_fit) {
+    m <- .mean_fitness_within(cols[[fitness_col]], cc, groups)
+    if (!any(m$usable[cc])) return(NULL)
+    y <- .relativise(cols[[fitness_col]], m)
+  } else {
+    y <- cols[[fitness_col]]
+  }
+
+  # the rows the gradient models keep: complete response, fitness and traits
+  keep <- !is.na(y) & !is.na(cols[[fitness_col]])
+  for (t in trait_cols) keep <- keep & !is.na(cols[[t]])
+  y <- as.double(y[keep])
+  if (!length(y)) stop("0 (non-NA) cases")
+  # doubles before any product, so integer traits cannot overflow
+  z <- lapply(cols[trait_cols], function(v) as.double(v[keep]))
+  k <- length(z)
+  one <- rep(1, length(y))
+  # model.matrix() columns: intercept, traits, I(z^2) (R's z^2 is z * z), and
+  # the products of each pair in the order of the formula's interactions
+  sq <- lapply(z, function(v) v^2)
+  cross <- if (k >= 2) {
+    utils::combn(k, 2, function(p) z[[p[1]]] * z[[p[2]]], simplify = FALSE)
+  } else {
+    list()
+  }
+  lin <- .ls_coef(c(list(one), z), y)
+  quad <- .ls_coef(c(list(one), z, sq, cross), y)
+  out <- c(lin[1L + seq_len(k)], 2 * quad[1L + k + seq_len(k)], quad[-seq_len(1L + 2L * k)])
+  attr(out, "degenerate") <- degenerate
+  out
+}
+
+#' @noRd
+# internal utility: least-squares coefficients of y on the given columns,
+# with lm.fit()'s QR (same routine and tolerance) and its NA for aliased
+# columns, without building an lm object.
+.ls_coef <- function(columns, y) {
+  X <- matrix(unlist(columns, use.names = FALSE), nrow = length(y))
+  fit <- stats::.lm.fit(X, y)
+  cf <- fit$coefficients
+  p <- ncol(X)
+  if (fit$rank < p) cf[(fit$rank + 1L):p] <- NA
+  if (fit$pivoted) cf[fit$pivot] <- cf
+  cf
 }
