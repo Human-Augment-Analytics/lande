@@ -1,5 +1,11 @@
 # lande (development version)
 
+* The app is much faster. Run shows the gradients at once, each fit is kept
+  so a change refits only what it affects, and the spline band runs on worker
+  processes (`options(lande.workers = 0)` turns them off). The landscape now
+  starts on the lattice method.
+* `univariate_spline()` gains `cl` to run the bootstrap refits on a cluster,
+  with the same results.
 * `bootstrap_selection()` refits only the least-squares gradients on each
   resample and runs 40 to 55 times faster. A resample is no longer dropped
   when its p-value model would fail to fit.

@@ -28,7 +28,13 @@
 # internal utility: distance from each grid point to the nearest individual,
 # with both scaled so the grid is the unit square, the distance
 # mgcv::vis.gam uses for its too.far argument. Done in blocks of grid rows so
-# a fine grid over a large data set does not build one huge matrix.
+# a fine grid over a large data set does not build one huge matrix. The
+# nearest individual of each row is found with max.col() on the negated
+# squares, which is about twice as fast as apply(d2, 1, min) and picks out
+# the same smallest square. A missing square (from a missing coordinate, or
+# a grid of zero width) would make max.col() give NA where min() gives NaN
+# or NA, so scaled coordinates that are not all numbers, which
+# correlated_fitness_surface() never passes, take the slower way.
 .grid_distance <- function(gx, gy, x, y) {
   rx <- range(gx)
   ry <- range(gy)
@@ -36,10 +42,16 @@
   gy <- (gy - ry[1]) / diff(ry)
   x <- (x - rx[1]) / diff(rx)
   y <- (y - ry[1]) / diff(ry)
+  fast <- !(anyNA(gx) || anyNA(gy) || anyNA(x) || anyNA(y))
   out <- numeric(length(gx))
   for (i in split(seq_along(gx), ceiling(seq_along(gx) / 1000))) {
     d2 <- outer(gx[i], x, "-")^2 + outer(gy[i], y, "-")^2
-    out[i] <- sqrt(apply(d2, 1, min))
+    if (fast) {
+      nearest <- max.col(-d2, ties.method = "first")
+      out[i] <- sqrt(d2[cbind(seq_along(i), nearest)])
+    } else {
+      out[i] <- sqrt(apply(d2, 1, min))
+    }
   }
   out
 }
@@ -498,18 +510,6 @@ correlated_fitness_surface <- function(
       message("Predictions use group = '", ref_group, "' as reference")
     }
 
-    .fit <- tryCatch(
-      {
-        as.numeric(stats::predict(fit, newdata = newdat, type = "response"))
-      },
-      error = function(e) {
-        message("Prediction failed, using mean: ", e$message)
-        rep(mean(y, na.rm = TRUE), nrow(newdat))
-      }
-    )
-
-    grid$.fit <- .fit
-
     # the band comes from the scale of the link and the standard error of the
     # fitted fitness from the delta method; Vc is used when the fit has it, so
     # smoothing parameter uncertainty is counted
@@ -517,6 +517,31 @@ correlated_fitness_surface <- function(
       stats::predict(fit, newdata = newdat, type = "link", se.fit = TRUE, unconditional = !is.null(fit$Vc)),
       error = function(e) NULL
     )
+
+    # for the families used here predict(type = "response") is the inverse
+    # link of the same linear predictor, so the fit is taken from the
+    # prediction above rather than predicting the grid a second time; any
+    # other family, or a failed prediction, goes the long way
+    fam_name <- fit$family$family
+    from_link <- !is.null(unc) && is.null(fit$family$predict) &&
+      (fam_name %in% c("binomial", "poisson", "quasipoisson", "gaussian") ||
+         grepl("^negative binomial", fam_name, ignore.case = TRUE))
+    .fit <- if (from_link) {
+      fit$family$linkinv(as.numeric(unc$fit))
+    } else {
+      tryCatch(
+        {
+          as.numeric(stats::predict(fit, newdata = newdat, type = "response"))
+        },
+        error = function(e) {
+          message("Prediction failed, using mean: ", e$message)
+          rep(mean(y, na.rm = TRUE), nrow(newdat))
+        }
+      )
+    }
+
+    grid$.fit <- .fit
+
     if (is.null(unc)) {
       grid$.se <- grid$.fit_lo <- grid$.fit_hi <- NA_real_
     } else {

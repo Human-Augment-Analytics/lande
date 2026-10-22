@@ -17,7 +17,8 @@ univariate_spline(
   bootstrap = FALSE,
   n_boot = 1000,
   by_group = FALSE,
-  count_family = c("poisson", "quasipoisson", "nb")
+  count_family = c("poisson", "quasipoisson", "nb"),
+  cl = NULL
 )
 }
 \arguments{
@@ -60,6 +61,22 @@ default), \code{"quasipoisson"} or \code{"nb"}, as in
 \code{correlated_fitness_surface()}; the smoothing parameter is chosen
 under whichever is used. The result's \code{dispersion} is the Pearson
 dispersion of the fit, and a Poisson fit warns when it is above 1.5.}
+
+\item{cl}{Optional cluster from \code{parallel::makeCluster()} to run the
+bootstrap refits on. The default \code{NULL} runs them one after another
+in this session. With a cluster the resamples are still drawn here, in
+the same order, and only the refits go to the workers, which fit under
+this session's random number generator kinds and its options for
+contrasts, matrix products and warnings. Their warnings and messages are
+raised here in the order the serial loop raises them, so the ribbon, the
+warnings, \code{options(warn = 2)} and the state of the random number
+generator afterwards (or when a handler stops the call at a warning) are
+the same as without a cluster. A negative binomial fit always runs here,
+as each refit starts from the theta of the one before. The caller starts
+and stops the cluster. The workers fit with mgcv, so they need the same
+version of it as this session on their library paths (for example
+\code{parallel::clusterCall(cl, function(p) .libPaths(p), .libPaths())});
+lande itself need not be loaded on them.}
 }
 \value{
 A list of class \code{"univariate_fitness"} containing the fitted GAM model, a prediction grid, and metadata.

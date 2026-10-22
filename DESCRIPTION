@@ -58,6 +58,7 @@ Suggests:
     akima,
     car,
     ggrepel,
+    parallel,
     patchwork,
     performance,
     plotly,

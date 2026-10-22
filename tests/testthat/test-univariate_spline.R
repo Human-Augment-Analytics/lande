@@ -47,3 +47,45 @@ test_that("count fitness is fitted on the raw counts with a Poisson family", {
   expect_true(all(res$grid$fit >= 0))
   expect_true(all(res$grid$lwr >= 0))
 })
+
+test_that("refits on a cluster give the same ribbon and random number state as the serial loop", {
+  skip_on_cran()
+  skip_if_not_installed("parallel")
+  set.seed(8)
+  df <- data.frame(z = as.numeric(scale(rnorm(80))))
+  df$s <- rbinom(80, 1, plogis(0.4 - 0.5 * df$z^2))
+  df$kids <- rpois(80, exp(0.3 + 0.2 * df$z))
+  cl <- parallel::makePSOCKcluster(2)
+  on.exit(parallel::stopCluster(cl), add = TRUE)
+  run <- function(fitness, ...) {
+    set.seed(3)
+    fit <- quiet(univariate_spline(df, fitness, "z", k = 5, bootstrap = TRUE, n_boot = 20, ...))
+    list(grid = fit$grid, ci = fit$ci_method, seed = .Random.seed)
+  }
+  serial <- run("s")
+  expect_identical(serial$ci, "bootstrap (percentile)")
+  expect_identical(run("s", cl = cl), serial)
+  # a negative binomial fit refits serially, cluster or not
+  expect_identical(run("kids", count_family = "nb", cl = cl), run("kids", count_family = "nb"))
+  expect_error(univariate_spline(df, "s", "z", bootstrap = TRUE, cl = 2), "cluster")
+  # the workers fit under this session's contrasts
+  df$g <- rep(c("a", "b", "c"), length.out = 80)
+  op <- options(contrasts = c("contr.sum", "contr.poly"))
+  on.exit(options(op), add = TRUE)
+  expect_identical(run("kids", group = "g", cl = cl), run("kids", group = "g"))
+  options(op)
+  # with options(warn = 2) a refit's warning is an error that drops the refit,
+  # with or without workers (few survivors, so some refits warn)
+  set.seed(1)
+  rare <- data.frame(z = as.numeric(scale(rnorm(40))))
+  rare$s <- as.integer(seq_len(40) %in% sample.int(40, 4))
+  strict <- function(...) {
+    old <- options(warn = 2)
+    on.exit(options(old))
+    set.seed(1)
+    out <- tryCatch(suppressMessages(univariate_spline(rare, "s", "z", k = 5, bootstrap = TRUE, n_boot = 40, ...)),
+                    error = conditionMessage)
+    list(out = if (is.character(out)) out else out$grid, seed = .Random.seed)
+  }
+  expect_identical(strict(cl = cl), strict())
+})

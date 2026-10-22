@@ -27,11 +27,27 @@ Tabs:
 
 Bootstrap, spline band and landscape simulation all run from the seed in
 Advanced settings, so repeated runs match. Advanced settings also hold the
-fitness type, the spline and surface basis (cubic regression, thin plate or
+fitness type, the landscape method (lattice by default, which makes the same
+draws as the original simulation; Gaussian convolution; or the simulation
+itself), the spline and surface basis (cubic regression, thin plate or
 P-spline) and smoothing criterion (GCV, REML or ML), the surface basis size
 k, a switch to draw the surface over the whole grid rather than only where
 there are data, a distance rule that blanks cells far from any individual,
 and the switch for the line from each group mean to its peak.
+
+Run shows the data and gradients first and fits the rest under the progress
+bar. Each fit is kept, by its data and settings, so a Run after changing one
+setting refits only what that setting feeds, and going back to earlier
+settings refits nothing. The bundled datasets' fits are shared by every
+session of the R process; an upload's stay in its session. Where the machine
+has cores and memory to spare, the fitness function's 200 bootstrap refits
+run on up to four worker processes (each about 230 MB), started at the first
+Run and stopped with the app. They are not started on Windows, where the
+workers' socket would bring up the firewall's prompt, or on shinyapps.io or
+Posit Connect, unless `options(lande.workers = n)` with n of two or more asks
+for n of them; `options(lande.workers = 0)` keeps the refits in the R session
+everywhere. The results are the same either way. The band follows the k
+slider once it has rested for 600 ms, and Run takes the value it is on.
 
 ## Run locally
 

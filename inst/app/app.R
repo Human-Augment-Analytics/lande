@@ -46,6 +46,121 @@ with_warnings <- function(expr) {
   list(value = value, warnings = grep("VIF above 5", warned, value = TRUE, invert = TRUE))
 }
 
+# Each heavy step is stored under a hash of its data, every argument it is
+# called with and, for the random steps, the seed. A Run, a tab or a slider
+# that comes back to settings already fitted then gets the stored result
+# instead of a refit; as each random step sets its own seed, that is the
+# result a refit would give. A bundled dataset's results are shared by all
+# the sessions of this R process, so a second visitor on a server gets them
+# too; an uploaded file's stay in its own session.
+SHARED_STORE <- cachem::cache_mem(max_size = 200 * 1024^2)
+new_store <- function() cachem::cache_mem(max_size = 100 * 1024^2)
+memo <- function(store, key, expr) {
+  k <- rlang::hash(key)
+  value <- store$get(k)
+  if (cachem::is.key_missing(value)) {
+    value <- expr
+    store$set(k, value)
+  }
+  value
+}
+
+# The fitness-function band's 200 refits run on worker processes when the
+# machine has cores and memory to spare: one socket cluster per R process,
+# shared by its sessions, started at the first Run and stopped with the app.
+# The band is the same either way. options(lande.workers = 0) keeps the
+# refits in this process, and a number of 2 or more sets the workers. The
+# browser version (webR), machines with fewer than three cores and Linux
+# with too little memory always refit here, and so, unless lande.workers
+# asks for workers, do Windows and the hosting services.
+BAND <- new.env()
+# the cores a container's CPU quota allows (Linux), NA without a quota
+cpu_quota <- function() {
+  v2 <- tryCatch(scan("/sys/fs/cgroup/cpu.max", what = "", quiet = TRUE), error = function(e) NULL, warning = function(w) NULL)
+  if (length(v2) == 2 && v2[1] != "max") return(as.numeric(v2[1]) / as.numeric(v2[2]))
+  read1 <- function(f) tryCatch(as.numeric(readLines(f, 1, warn = FALSE)), error = function(e) NA, warning = function(w) NA)
+  q <- read1("/sys/fs/cgroup/cpu/cpu.cfs_quota_us")
+  if (isTRUE(q > 0)) q / read1("/sys/fs/cgroup/cpu/cpu.cfs_period_us") else NA
+}
+# the memory left for workers on Linux, in bytes: what a container's limit
+# (cgroup v2 or v1) leaves above what it uses, or what the machine has
+# available, whichever is less; NA elsewhere or when neither can be read
+mem_room <- function() {
+  if (!identical(Sys.info()[["sysname"]], "Linux")) return(NA_real_)
+  read1 <- function(f) tryCatch(as.numeric(readLines(f, 1, warn = FALSE)), error = function(e) NA, warning = function(w) NA)
+  room <- NA_real_
+  for (cg in list(c("/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory.current"),
+                  c("/sys/fs/cgroup/memory/memory.limit_in_bytes", "/sys/fs/cgroup/memory/memory.usage_in_bytes"))) {
+    limit <- read1(cg[1])
+    # no limit reads as "max" (v2) or a number near 2^63 (v1)
+    if (isTRUE(limit < 2^60)) {
+      room <- limit - max(0, read1(cg[2]), na.rm = TRUE)
+      break
+    }
+  }
+  info <- tryCatch(readLines("/proc/meminfo", warn = FALSE), error = function(e) character())
+  avail <- suppressWarnings(as.numeric(sub("^MemAvailable:\\s*([0-9]+) kB.*$", "\\1", grep("^MemAvailable:", info, value = TRUE)[1])) * 1024)
+  if (isTRUE(avail >= 0)) room <- min(room, avail, na.rm = TRUE)
+  room
+}
+band_workers <- function() {
+  if (grepl("emscripten", R.version$platform, fixed = TRUE)) return(0L)
+  n <- getOption("lande.workers")
+  if (!is.null(n)) return(if (isTRUE(n >= 2)) as.integer(n) else 0L)
+  # a socket cluster's master listens on every network interface, which on
+  # Windows brings up the firewall's prompt at the first Run
+  if (.Platform$OS.type == "windows") return(0L)
+  # a hosting service runs several app processes on one instance, each of
+  # which would start its own workers, mostly in too little memory
+  if (Sys.getenv("R_CONFIG_ACTIVE") %in% c("shinyapps", "rsconnect")) return(0L)
+  cores <- tryCatch(parallel::detectCores(), error = function(e) NA_integer_)
+  quota <- suppressWarnings(cpu_quota())
+  if (isTRUE(quota < cores)) cores <- floor(quota)
+  if (!isTRUE(cores >= 3)) return(0L)
+  n <- min(4, cores - 1)
+  # a worker takes about 230 MB once it has refitted the band; each gets
+  # 300 MB, after 1 GB for this process to grow into
+  room <- suppressWarnings(mem_room())
+  if (!is.na(room)) n <- min(n, floor((room - 1024^3) / (300 * 1024^2)))
+  if (n < 2) 0L else as.integer(n)
+}
+start_band_cluster <- function(n) {
+  cl <- parallel::makePSOCKcluster(n, rscript_args = "--vanilla", setup_timeout = 10)
+  ok <- FALSE
+  on.exit(if (!ok) parallel::stopCluster(cl))
+  # the workers look where this process does; the function goes without its
+  # environment, which would carry this app's along
+  set_libs <- function(paths) invisible(.libPaths(paths))
+  environment(set_libs) <- baseenv()
+  parallel::clusterCall(cl, set_libs, .libPaths())
+  # they refit with mgcv alone (lande is not loaded on them), which has to
+  # be the version this process has
+  theirs <- parallel::clusterEvalQ(cl, getNamespaceVersion(loadNamespace("mgcv")))
+  if (!all(vapply(theirs, identical, logical(1), getNamespaceVersion(loadNamespace("mgcv"))))) {
+    stop("the workers load another version of mgcv")
+  }
+  ok <- TRUE
+  cl
+}
+# the cluster, started on first use; NULL to refit here
+band_cluster <- function() {
+  if (is.null(BAND$cl) && is.null(BAND$off)) {
+    n <- band_workers()
+    BAND$cl <- if (n >= 2) tryCatch(start_band_cluster(n), error = function(e) {
+      try(message("lande app: no workers for the band (", conditionMessage(e), "); refitting it in this process"), silent = TRUE)
+      NULL
+    })
+    # one try per process: without workers the band is refitted here
+    BAND$off <- is.null(BAND$cl)
+  }
+  BAND$cl
+}
+stop_band_cluster <- function() {
+  if (!is.null(BAND$cl)) try(parallel::stopCluster(BAND$cl), silent = TRUE)
+  BAND$cl <- NULL
+}
+onStop(stop_band_cluster)
+
 # download names start with the dataset: a short name for the bundled ones,
 # the file name for an upload
 STEMS <- c("Bumpus sparrows" = "bumpus", "Crescent Pond pupfish" = "crescent_pond_pupfish",
@@ -489,8 +604,8 @@ ui <- fluidPage(
         sliderInput("surf_grid", "Surface grid", 20, 80, 50, step = 10),
         sliderInput("grid_n", "Landscape grid", 15, 60, 40, step = 5),
         selectInput("land_method", "Landscape method",
-                    c("Simulate (as before)" = "simulate", "Lattice (faster, same draws)" = "lattice",
-                      "Gaussian convolution" = "convolve")),
+                    c("Lattice (fast, same as simulate)" = "lattice", "Gaussian convolution" = "convolve",
+                      "Simulate (original)" = "simulate"), selected = "lattice"),
         div(class = "help-note",
             "Gaussian convolution draws no individuals: the simulated individuals below do not apply to it, and its landscape does not change with the seed."),
         sliderInput("sim_n", "Simulated individuals per grid point", 100, 1000, 300, step = 100),
@@ -599,6 +714,21 @@ ui <- fluidPage(
 # --- server -----------------------------------------------------------------
 server <- function(input, output, session) {
 
+  # mgcv and MASS would load with the first fit; loading them once the page
+  # is drawn takes that time out of the first Run
+  session$onFlushed(function() for (p in c("mgcv", "MASS")) try(loadNamespace(p), silent = TRUE))
+
+  # results stored for this session's uploads (bundled datasets use SHARED_STORE)
+  session_store <- new_store()
+  # every heavy step goes through stored(); fits_made lists the steps this
+  # session fitted rather than took from a store, for the tests
+  fits_made <- character()
+  stored <- function(store, key, expr) memo(store, key, {
+    value <- expr
+    fits_made <<- c(fits_made, key[[1]])
+    value
+  })
+
   current <- reactive({
     if (input$dataset == "Upload CSV...") {
       req(input$file)
@@ -684,15 +814,19 @@ server <- function(input, output, session) {
     grp_model <- if (within) grp else NULL
     prep <- suppressWarnings(suppressMessages(
       prepare_selection_data(d, fit, traits, standardize = TRUE, group = grp_model, add_relative = TRUE, na_action = "none")))
-    fitted <- with_warnings(
-      selection_report(d, fit, traits, fitness_type = resolved, standardize = TRUE, group = grp_model))
+    # the steps' results are stored under the hash of the data they are given
+    store <- if (input$dataset == "Upload CSV...") session_store else SHARED_STORE
+    d_key <- rlang::hash(d)
+    args <- list(fit, traits, fitness_type = resolved, standardize = TRUE, group = grp_model)
+    fitted <- stored(store, list("report", d_key, args), with_warnings(do.call(selection_report, c(list(d), args))))
     report <- fitted$value
     warned <- fitted$warnings
     grouped <- NULL
     if (!is.null(grp) && isTRUE(input$per_group)) {
-      per <- tryCatch(with_warnings(
-        selection_coefficients(d, fit, traits, fitness_type = resolved, standardize = TRUE,
-                               group = grp, return_grouped = TRUE)),
+      args <- list(fit, traits, fitness_type = resolved, standardize = TRUE, group = grp, return_grouped = TRUE)
+      # a failure is not stored, so another Run (or session) tries again
+      per <- tryCatch(stored(store, list("per_group", d_key, args), with_warnings(
+        do.call(selection_coefficients, c(list(d), args)))),
         error = function(e) list(value = NULL, warnings = paste("Per-group fits failed:", conditionMessage(e))))
       grouped <- per$value
       if (length(per$warnings)) warned <- c(warned, paste("Per group:", per$warnings))
@@ -718,24 +852,36 @@ server <- function(input, output, session) {
          surf_bs = input$surf_bs %||% "tp", surf_sm = input$surf_sm %||% "REML",
          spline_bs = input$spline_bs %||% "cr", spline_sm = input$spline_sm %||% "GCV.Cp",
          count_family = input$count_family %||% "poisson",
-         grid_n = input$grid_n, sim_n = input$sim_n, land_method = input$land_method %||% "simulate")
+         grid_n = input$grid_n, sim_n = input$sim_n, land_method = input$land_method %||% "lattice",
+         store = store, d_key = d_key, prep_key = rlang::hash(prep))
   })
 
   boot_val <- reactiveVal(NULL)
-  # Do the heavy work once at Run, so the tabs only draw afterwards
+  # Run fits the gradients, then sends the data and gradients to the page at
+  # once; the fitness function, surface and landscape are fitted straight
+  # after, with the progress bar still up, so the tabs only draw afterwards
   observeEvent(input$run, {
-    withProgress(message = "Running the analysis", value = 0, {
-      incProgress(0.05, detail = "gradients")
-      s <- try(setup(), silent = TRUE)
-      req(!inherits(s, "try-error"))
-      uni_choice(if (isTRUE(input$uni_trait %in% s$traits)) input$uni_trait else s$traits[1])
-      surf_choice(pick_surface(s, input$surf_x, input$surf_y))
-      incProgress(0.35, detail = "fitness function")
-      try(uni_fit(), silent = TRUE)
-      if (isTRUE(input$uni_land)) try(uni_land(), silent = TRUE)
-      incProgress(0.35, detail = "fitness surface and landscape")
-      if (length(s$traits) >= 2) try(surfaces(), silent = TRUE)
-      incProgress(0.25, detail = "done")
+    progress <- Progress$new(session)
+    progress$set(message = "Running the analysis", value = 0.05, detail = "gradients")
+    s <- try(setup(), silent = TRUE)
+    if (inherits(s, "try-error")) {
+      progress$close()
+      req(FALSE)
+    }
+    uni_choice(if (isTRUE(input$uni_trait %in% s$traits)) input$uni_trait else s$traits[1])
+    surf_choice(pick_surface(s, input$surf_x, input$surf_y))
+    # the k the slider is on, even if it moved less than 600 ms ago
+    take_k(input$spline_k)
+    session$onFlushed(function() {
+      on.exit(try(progress$close(), silent = TRUE))
+      withReactiveDomain(session, isolate({
+        progress$set(value = 0.2, detail = "fitness function")
+        try(uni_fit(), silent = TRUE)
+        if (isTRUE(input$uni_land)) try(uni_land(), silent = TRUE)
+        progress$set(value = 0.6, detail = "fitness surface and landscape")
+        if (length(s$traits) >= 2) try(landscape(), silent = TRUE)
+        progress$set(value = 1, detail = "done")
+      }))
     })
   }, priority = 100)
   observeEvent(input$run, boot_val(NULL))
@@ -743,10 +889,11 @@ server <- function(input, output, session) {
     s <- setup()
     validate(need(is.numeric(input$n_boot) && !is.na(input$n_boot) && input$n_boot >= 2,
                   "Resamples must be a whole number of at least 2."))
+    args <- list(s$fit, s$traits, fitness_type = s$ftype, standardize = TRUE, group = s$group_model,
+                 n_boot = round(input$n_boot))
     withProgress(message = "Bootstrapping...", {
-      b <- with_seed(s$seed, suppressWarnings(suppressMessages(
-        bootstrap_selection(s$d, s$fit, s$traits, fitness_type = s$ftype, standardize = TRUE,
-                            group = s$group_model, n_boot = round(input$n_boot)))))
+      b <- stored(s$store, list("bootstrap", s$d_key, args, s$seed), with_seed(s$seed, suppressWarnings(suppressMessages(
+        do.call(bootstrap_selection, c(list(s$d), args))))))
     })
     # the number drawn, for the script; attr(b, "n_boot") counts the usable ones
     attr(b, "n_drawn") <- round(input$n_boot)
@@ -801,7 +948,9 @@ server <- function(input, output, session) {
   output$grad_table <- renderTable({ s <- setup(); gradient_table(s$report, s$traits) }, align = "lrrrrr")
   assump_checks <- reactive({
     s <- setup()
-    suppressWarnings(check_selection_assumptions(s$d, s$fit, s$traits, fitness_type = s$ftype, group = s$group_model))
+    args <- list(s$fit, s$traits, fitness_type = s$ftype, group = s$group_model)
+    stored(s$store, list("assumptions", s$d_key, args),
+           suppressWarnings(do.call(check_selection_assumptions, c(list(s$d), args))))
   })
   output$assump_table <- renderTable({
     chk <- assump_checks()
@@ -835,8 +984,10 @@ server <- function(input, output, session) {
     s <- setup()
     if (!isTRUE(input$canonical) || length(s$traits) < 2) return(NULL)
     # the p-values come from shuffling fitness, so from the stored seed
-    tryCatch(with_seed(s$seed, suppressWarnings(suppressMessages(
-      canonical_analysis(s$d, s$fit, s$traits, fitness_type = s$ftype, standardize = TRUE, group = s$group_model)))),
+    args <- list(s$fit, s$traits, fitness_type = s$ftype, standardize = TRUE, group = s$group_model)
+    # a failure is not stored, so another Run (or session) tries again
+    tryCatch(stored(s$store, list("canonical", s$d_key, args, s$seed), with_seed(s$seed, suppressWarnings(suppressMessages(
+      do.call(canonical_analysis, c(list(s$d), args)))))),
       error = function(e) NULL)
   })
   output$canon_ui <- renderUI({
@@ -912,12 +1063,48 @@ server <- function(input, output, session) {
     s <- setup()
     if (isTRUE(input$uni_trait %in% s$traits)) uni_choice(input$uni_trait)
   })
-  uni_fit <- reactive({
+  # the slider sends each value it rests on while dragged; the band follows
+  # it once it has stayed put for 600 ms, and a Run takes the value it is on
+  # (the Run observer calls take_k too). Each take marks the band as changed,
+  # even at the same k, as the slider itself does, so the fitness function is
+  # redrawn for every move the band has not yet taken but not again for one a
+  # Run already took; the plot's jitter then moves the session's random
+  # numbers as it would without the wait
+  k_taken <- reactiveVal(list(k = NULL, n = 0))
+  band_k <- reactive(k_taken()$k)
+  k_moves <- 0
+  k_used <- 0
+  take_k <- function(k) {
+    k_used <<- k_moves
+    k_taken(list(k = k, n = isolate(k_taken()$n) + 1))
+  }
+  observeEvent(input$spline_k, k_moves <<- k_moves + 1, priority = 200)
+  k_rested <- debounce(reactive(input$spline_k), 600)
+  observeEvent(k_rested(), if (k_moves > k_used) take_k(k_rested()))
+  band_key <- reactive({
     s <- setup(); tr <- uni_choice(); req(tr)
-    with_seed(s$seed, suppressWarnings(suppressMessages(
-      univariate_spline(s$prep, s$fit, tr, fitness_type = s$ftype, group = s$group_model,
-                        k = input$spline_k, bs = s$spline_bs, smoothing = s$spline_sm,
-                        bootstrap = TRUE, n_boot = 200, count_family = s$count_family))))
+    list("band", s$prep_key,
+         # count_family only reaches a count fit, so other fits share one entry
+         args = list(s$fit, tr, fitness_type = s$ftype, group = s$group_model, k = band_k(), bs = s$spline_bs,
+                     smoothing = s$spline_sm, bootstrap = TRUE, n_boot = 200,
+                     count_family = if (identical(s$ftype, "count")) s$count_family else "poisson"),
+         s$seed)
+  })
+  uni_fit <- reactive({
+    s <- setup(); key <- band_key()
+    stored(s$store, key, {
+      # the refits go to the workers where there are any; the band is the same
+      band <- function(cl) with_seed(s$seed, suppressWarnings(suppressMessages(
+        do.call(univariate_spline, c(list(s$prep), key$args, list(cl = cl))))))
+      cl <- band_cluster()
+      if (is.null(cl)) band(NULL) else tryCatch(band(cl), error = function(e) {
+        # refitted here; if that works, the workers were the problem, so they go
+        out <- band(NULL)
+        stop_band_cluster()
+        BAND$off <- TRUE
+        out
+      })
+    })
   })
   uni_plot_obj <- reactive(plot_univariate_fitness(uni_fit(), uni_choice(), classic_plot = input$classic) +
                              labs(x = sd_lab(uni_choice())))
@@ -927,11 +1114,13 @@ server <- function(input, output, session) {
     content = function(f) ggsave(f, uni_plot_obj(), width = 7, height = 5, dpi = 200))
   uni_land <- reactive({
     s <- setup(); u <- uni_fit()
-    with_seed(s$seed, suppressWarnings(suppressMessages(capture.output(
-      out <- adaptive_landscape(s$prep, u$model, uni_choice(), group_col = s$group_model,
-                                grid_n = s$grid_n, simulation_n = s$sim_n, clamp = s$clamp,
-                                method = s$land_method)))))
-    out
+    args <- list(uni_choice(), group_col = s$group_model, grid_n = s$grid_n, simulation_n = s$sim_n,
+                 clamp = s$clamp, method = s$land_method)
+    stored(s$store, list("uni_land", band_key(), args, s$seed), {
+      with_seed(s$seed, suppressWarnings(suppressMessages(capture.output(
+        out <- do.call(adaptive_landscape, c(list(s$prep, u$model), args))))))
+      out
+    })
   })
   uni_land_plot_obj <- reactive({
     req(isTRUE(input$uni_land))
@@ -963,22 +1152,43 @@ server <- function(input, output, session) {
     validate(need(!is.na(tr[2]), "Pick two different traits for a surface."))
     tr
   })
-  surfaces <- reactive({
+  # the surface and the landscape are fitted apart, so the surface tab does
+  # not wait for the landscape and a landscape setting does not refit the surface
+  surface_key <- reactive({
     s <- setup(); tr <- surf_traits()
-    if (s$surf_method == "tps" && !has_fields) validate("Thin-plate spline needs the 'fields' package; switch to GAM in Advanced settings.")
-    surf <- suppressWarnings(suppressMessages(
-      correlated_fitness_surface(s$prep, s$fit, tr, method = s$surf_method, grid_n = s$surf_grid, mask = !s$surf_full,
-                                 too_far = s$surf_far, group = s$group, group_effect = s$within_group,
-                                 k = s$surf_k, bs = s$surf_bs, smoothing = s$surf_sm, clamp = s$clamp,
-                                 count_family = s$count_family)))
-    land <- with_seed(s$seed, suppressWarnings(suppressMessages(capture.output(
-      out <- adaptive_landscape(s$prep, surf$model, tr, group_col = s$group_model,
-                                grid_n = s$grid_n, simulation_n = s$sim_n, clamp = s$clamp,
-                                method = s$land_method)))))
-    list(surf = surf, land = out, traits = tr)
+    # count_family only reaches a surface fitted to counts, so other surfaces
+    # share one entry; the surface finds counts by this same rule (fitness on
+    # the rows with both traits), and if it can't be applied the family stays
+    counts <- tryCatch({
+      y <- as.numeric(s$prep[[s$fit]])
+      keep <- stats::complete.cases(y, as.numeric(s$prep[[tr[1]]]), as.numeric(s$prep[[tr[2]]]))
+      identical(suppressWarnings(detect_family(y[keep]))$type, "count")
+    }, error = function(e) TRUE)
+    list("surface", s$prep_key,
+         args = list(s$fit, tr, method = s$surf_method, grid_n = s$surf_grid, mask = !s$surf_full,
+                     too_far = s$surf_far, group = s$group, group_effect = s$within_group,
+                     k = s$surf_k, bs = s$surf_bs, smoothing = s$surf_sm, clamp = s$clamp,
+                     count_family = if (counts) s$count_family else "poisson"))
   })
+  surface_fit <- reactive({
+    s <- setup(); key <- surface_key()
+    if (s$surf_method == "tps" && !has_fields) validate("Thin-plate spline needs the 'fields' package; switch to GAM in Advanced settings.")
+    stored(s$store, key, suppressWarnings(suppressMessages(
+      do.call(correlated_fitness_surface, c(list(s$prep), key$args)))))
+  })
+  landscape <- reactive({
+    s <- setup(); surf <- surface_fit()
+    args <- list(surf_traits(), group_col = s$group_model, grid_n = s$grid_n, simulation_n = s$sim_n,
+                 clamp = s$clamp, method = s$land_method)
+    stored(s$store, list("landscape", surface_key(), args, s$seed), {
+      with_seed(s$seed, suppressWarnings(suppressMessages(capture.output(
+        out <- do.call(adaptive_landscape, c(list(s$prep, surf$model), args))))))
+      out
+    })
+  })
+  surfaces <- reactive(list(surf = surface_fit(), land = landscape(), traits = surf_traits()))
   surf_plot_obj <- reactive({
-    sf <- surfaces(); s <- setup()
+    sf <- list(surf = surface_fit(), traits = surf_traits()); s <- setup()
     groups <- isTRUE(input$show_groups)
     lines <- !isFALSE(input$group_lines)
     alpha <- if (is.numeric(input$point_alpha)) input$point_alpha else 0.5
@@ -1138,7 +1348,7 @@ server <- function(input, output, session) {
     s <- setup(); b <- boot_val(); tr <- surf_choice()
     r_code(s, s$dataset, s$file_name,
            uni_trait = uni_choice() %||% s$traits[1],
-           spline_k = input$spline_k %||% 10,
+           spline_k = band_k() %||% 10,
            surf_traits = if (length(s$traits) >= 2 && length(tr) == 2 && !anyNA(tr) && tr[1] != tr[2]) tr else character(),
            n_boot = if (!is.null(b)) attr(b, "n_drawn") else if (is.numeric(input$n_boot) && !is.na(input$n_boot)) round(input$n_boot) else 500,
            uncertainty = if (s$surf_method == "tps" || is.null(input$surf_unc)) "none" else input$surf_unc,
@@ -1169,7 +1379,7 @@ server <- function(input, output, session) {
                 if (s$per_group) "; selection also estimated per group" else ""),
       sprintf("Individuals with complete data: %d", nrow(s$d)),
       sprintf("Fitness function: %s basis, %s smoothing, k = %d%s", s$spline_bs,
-              crit(s$spline_sm, s$ftype), input$spline_k,
+              crit(s$spline_sm, s$ftype), band_k(),
               if (identical(s$ftype, "count")) paste0(", ", s$count_family, " family") else ""),
       sprintf("Fitness surface: %s, %d x %d grid, %s",
               if (s$surf_method == "tps") paste0("thin-plate spline", if (s$clamp) ", held within the fitness range" else "") else
