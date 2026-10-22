@@ -241,6 +241,30 @@ load_dataset <- function(name) {
 
 DATASETS <- c("Bumpus sparrows", "Crescent Pond pupfish", "Little Lake pupfish",
               "Finch community (five groups)", "Upload CSV...")
+
+# the study each bundled dataset comes from, shown under the Dataset picker and
+# in the settings so it can be cited; Bumpus (1899) has no DOI
+martin_2016 <- list(
+  short = "Martin, C. H. (2016) Evolution 70, 1265-1282.",
+  cite = paste("Martin, C. H. (2016). Context dependence in complex adaptive landscapes: frequency and",
+               "trait-dependent selection surfaces within an adaptive radiation of Caribbean pupfishes.",
+               "Evolution 70, 1265-1282."),
+  links = c("Paper" = "https://doi.org/10.1111/evo.12932",
+            "Data (Dryad)" = "https://doi.org/10.5061/dryad.n3mj3"))
+DATA_SOURCES <- list(
+  "Bumpus sparrows" = list(
+    short = "Bumpus, H. C. (1899) Biological Lectures, Woods Hole, 209-226.",
+    cite = paste("Bumpus, H. C. (1899). The elimination of the unfit as illustrated by the introduced sparrow,",
+                 "Passer domesticus. Biological Lectures, Marine Biological Laboratory, Woods Hole, 209-226."),
+    links = character()),
+  "Crescent Pond pupfish" = martin_2016,
+  "Little Lake pupfish" = martin_2016,
+  "Finch community (five groups)" = list(
+    short = "Beausoleil, M.-O. et al. (2023) Evolution 77, 2533-2546.",
+    cite = paste("Beausoleil, M.-O. et al. (2023). The fitness landscape of a community of Darwin's finches.",
+                 "Evolution 77, 2533-2546."),
+    links = c("Paper" = "https://doi.org/10.1093/evolut/qpad160",
+              "Data (Borealis, CC BY 4.0)" = "https://doi.org/10.5683/SP3/0YIWSE")))
 numeric_cols <- function(df) names(df)[vapply(df, is.numeric, logical(1))]
 
 # --- formatting helpers -----------------------------------------------------
@@ -580,6 +604,7 @@ ui <- fluidPage(
       width = 3,
       h4("Data"),
       selectInput("dataset", "Dataset", DATASETS),
+      uiOutput("data_source"),
       conditionalPanel("input.dataset == 'Upload CSV...'",
         fileInput("file", "CSV file", accept = c(".csv", ".tsv", ".txt"))),
       h4("Design"),
@@ -717,6 +742,17 @@ server <- function(input, output, session) {
   # mgcv and MASS would load with the first fit; loading them once the page
   # is drawn takes that time out of the first Run
   session$onFlushed(function() for (p in c("mgcv", "MASS")) try(loadNamespace(p), silent = TRUE))
+
+  # the study the chosen dataset comes from, with links to the paper and the data
+  output$data_source <- renderUI({
+    src <- DATA_SOURCES[[input$dataset]]
+    if (is.null(src)) return(NULL)
+    links <- lapply(seq_along(src$links), function(i)
+      tagList(if (i > 1) " | ", doc_link(names(src$links)[i], src$links[[i]])))
+    # the short form here; the full citation on hover and in the settings
+    div(class = "help-note", title = src$cite, tags$b("Source: "), src$short,
+        if (length(links)) tagList(" ", links))
+  })
 
   # results stored for this session's uploads (bundled datasets use SHARED_STORE)
   session_store <- new_store()
@@ -1368,8 +1404,12 @@ server <- function(input, output, session) {
       if (type == "count") switch(s$count_family, poisson = "UBRE", nb = "REML", "GCV") else "GCV"
     surf_type <- suppressWarnings(detect_family(s$d[[s$fit]])$type)
     surf_crit <- crit(s$surf_sm, surf_type)
+    src <- DATA_SOURCES[[s$dataset]]
     paste(
-      sprintf("File: %s", s$source),
+      sprintf("File: %s%s", s$source, if (is.null(src)) "" else
+        paste0("\n", paste(c(strwrap(src$cite, 90, initial = "Data source: ", prefix = "  "),
+                             if (length(src$links)) sprintf("  %s: %s", names(src$links), src$links)),
+                           collapse = "\n"))),
       sprintf("Fitness: %s (%s, %s)", s$fit, s$ftype, s$ftype_how),
       sprintf("Traits: %s", paste(s$traits, collapse = ", ")),
       if (is.null(s$group)) "Group: none" else
