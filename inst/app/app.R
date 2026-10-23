@@ -5,8 +5,8 @@
 # Static export (GitHub Pages): shinylive::export("app", "docs"); serve docs/
 #
 # The core analysis needs only mgcv and MASS. The thin-plate spline surface,
-# the 3D landscape (fields) and Type III ANOVA (car) degrade to a message
-# when those packages are missing.
+# the 3D landscape and surface (fields) and Type III ANOVA (car) degrade to a
+# message when those packages are missing.
 # ---------------------------------------------------------------------------
 
 library(shiny)
@@ -699,17 +699,27 @@ ui <- fluidPage(
           fluidRow(
             column(3, selectInput("surf_x", "Trait on x", NULL)),
             column(3, selectInput("surf_y", "Trait on y", NULL)),
-            column(3, br(), checkboxInput("show_points", "Show individuals", TRUE)),
+            column(3, conditionalPanel("input.surf_view == '2d'", br(),
+              checkboxInput("show_points", "Show individuals", TRUE))),
             column(3, br(), checkboxInput("show_groups", "Group means and peaks", TRUE))),
           fluidRow(
-            column(5, conditionalPanel("input.show_points",
+            column(5, conditionalPanel("input.surf_view == '2d' && input.show_points",
               sliderInput("point_alpha", "Opacity of the individuals", 0.05, 1, 0.5, step = 0.05))),
             column(4, selectInput("theme", "Colours", names(THEMES))),
-            column(3, selectInput("surf_unc", "Uncertainty (GAM)",
-                                  c("none" = "none", "standard error lines" = "se", "lower, fit and upper" = "band")))),
-          res_head("Fitness surface", dl_btn("dl_surfplot", "PNG", "Download the fitness surface as PNG")),
-          plotOutput("surf_plot", height = "500px"),
-          div(class = "help-note", "A group's peak is the highest point of the surface within that group's own range: filled when it is a peak of the surface, open when the surface keeps rising past the group's range or the edge of the data.")),
+            column(3, conditionalPanel("input.surf_view == '2d'",
+              selectInput("surf_unc", "Uncertainty (GAM)",
+                          c("none" = "none", "standard error lines" = "se", "lower, fit and upper" = "band"))))),
+          res_head("Fitness surface",
+                   radioButtons("surf_view", tags$span(class = "sr-only", "Surface view"),
+                                c("2D" = "2d", "3D" = "3d"), inline = TRUE),
+                   conditionalPanel("input.surf_view == '2d'",
+                     dl_btn("dl_surfplot", "PNG", "Download the fitness surface as PNG"))),
+          conditionalPanel("input.surf_view == '2d'",
+            plotOutput("surf_plot", height = "500px"),
+            div(class = "help-note", "A group's peak is the highest point of the surface within that group's own range: filled when it is a peak of the surface, open when the surface keeps rising past the group's range or the edge of the data.")),
+          conditionalPanel("input.surf_view == '3d'",
+            uiOutput("surf3d_ui"),
+            div(class = "help-note", "The fitted fitness where there are data. Drag to rotate. Diamonds: interior peaks of the surface; with groups shown, circles mark the group means and squares their highest points, filled when that point is a peak of the surface and open when it is not."))),
         tabPanel("Adaptive landscape",
           br(), uiOutput("opt_box"),
           fluidRow(
@@ -1245,6 +1255,68 @@ server <- function(input, output, session) {
   output$dl_surfplot <- downloadHandler(
     filename = function() paste0(dl_name("fitness_surface", surf_traits()), ".png"),
     content = function(f) ggsave(f, surf_plot_obj(), width = 7.5, height = 6, dpi = 200))
+  output$surf3d_ui <- renderUI({
+    if (has_plotly) plotly::plotlyOutput("surf3d_plotly", height = "500px")
+    else plotOutput("surf3d", height = "500px")
+  })
+  output$surf3d <- renderPlot({
+    surf <- surface_fit(); tr <- surf_traits()
+    if (!has_fields) { plot.new(); text(0.5, 0.5, "3D view needs the 'fields' or 'plotly' package"); return() }
+    plot_correlated_fitness_3d(surf, tr, color_palette = theme_of(input$theme)$ramp(100))
+  })
+  # plotly is optional: without it the 3D view above falls back to fields
+  if (has_plotly) output$surf3d_plotly <- plotly::renderPlotly({
+    surf <- surface_fit(); tr <- surf_traits(); s <- setup(); g <- surf$grid
+    xu <- sort(unique(g[[tr[1]]])); yu <- sort(unique(g[[tr[2]]]))
+    # masked cells stay NA and are left as gaps
+    z <- matrix(NA_real_, nrow = length(yu), ncol = length(xu)) # plotly: rows follow y
+    z[cbind(match(g[[tr[2]]], yu), match(g[[tr[1]]], xu))] <- g$.fit
+    pal <- theme_of(input$theme)$ramp(9)
+    cs <- lapply(seq_along(pal), function(i) list((i - 1) / (length(pal) - 1), pal[i]))
+    z_name <- if (s$ftype == "binary") "Survival" else "Fitness"
+    p <- plotly::plot_ly()
+    p <- plotly::add_surface(p, x = xu, y = yu, z = z, colorscale = cs, opacity = 0.95,
+                             colorbar = list(title = z_name),
+                             hovertemplate = paste0(tr[1], ": %{x:.2f}<br>", tr[2], ": %{y:.2f}<br>", tolower(z_name), ": %{z:.3f}<extra></extra>"))
+    pk <- surf$peaks
+    pk <- if (is.null(pk)) NULL else pk[pk$interior %in% TRUE, , drop = FALSE]
+    if (!is.null(pk) && nrow(pk)) {
+      p <- plotly::add_markers(p, x = pk[[tr[1]]], y = pk[[tr[2]]], z = pk$fit,
+                               marker = list(size = 6, color = "#f1c40f", symbol = "diamond", line = list(color = "black", width = 1)),
+                               name = "Interior peak", hoverinfo = "name")
+    }
+    gr <- surf$groups
+    if (isTRUE(input$show_groups) && !is.null(gr) && nrow(gr) && any(!is.na(g$.fit))) {
+      m1 <- gr[[paste0("mean_", tr[1])]]; m2 <- gr[[paste0("mean_", tr[2])]]
+      # one label per position, so groups standardised within themselves read "a, b"
+      key <- paste(round(m1, 6), round(m2, 6)); first <- !duplicated(key)
+      lab <- vapply(key[first], function(k) paste(gr$group[key == k], collapse = ", "), character(1))
+      m1 <- m1[first]; m2 <- m2[first]
+      # each mean sits just above the nearest kept cell, so the surface does not hide it
+      kept <- g[!is.na(g$.fit), , drop = FALSE]
+      near <- vapply(seq_along(m1), function(i) which.min((kept[[tr[1]]] - m1[i])^2 + (kept[[tr[2]]] - m2[i])^2), integer(1))
+      lift <- 0.02 * diff(range(kept$.fit))
+      p <- plotly::add_trace(p, type = "scatter3d", mode = "markers+text", x = m1, y = m2, z = kept$.fit[near] + lift,
+                             text = unname(lab), textposition = "top center",
+                             marker = list(size = 5, color = "white", symbol = "circle", line = list(color = "black", width = 1)),
+                             name = "Group mean", hoverinfo = "text")
+      hp <- gr[!is.na(gr[[paste0("peak_", tr[1])]]), , drop = FALSE]
+      if (nrow(hp)) {
+        is_peak <- hp$peak_interior %in% TRUE
+        p <- plotly::add_markers(p, x = hp[[paste0("peak_", tr[1])]], y = hp[[paste0("peak_", tr[2])]], z = hp$peak_fit,
+                                 marker = list(size = 4, color = "black", symbol = ifelse(is_peak, "square", "square-open")),
+                                 text = paste(hp$group, ifelse(is_peak, "peak", "high point")),
+                                 name = "Group high point", hoverinfo = "text")
+      }
+    }
+    plotly::layout(p,
+      title = list(text = "Fitness surface (drag to rotate)", font = list(size = 14)),
+      showlegend = FALSE, margin = list(l = 0, r = 0, b = 0, t = 40),
+      scene = list(
+        xaxis = list(title = sd_lab(tr[1])), yaxis = list(title = sd_lab(tr[2])),
+        zaxis = list(title = z_name),
+        camera = list(eye = list(x = 1.4, y = -1.4, z = 1.3))))
+  })
 
   opt_info <- reactive({
     sf <- surfaces(); opt <- sf$land$optimum; tr <- sf$traits; g <- sf$land$grid

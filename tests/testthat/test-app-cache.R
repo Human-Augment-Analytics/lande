@@ -6,8 +6,8 @@ library(testthat)
 # plots are left undrawn: only the fits matter here.
 
 app_steps <- c("report", "per_group", "assumptions", "canonical", "bootstrap", "band", "uni_land", "surface", "landscape")
-plot_outputs <- c("hist_plot", "grad_plot", "uni_plot", "uni_land_plot", "surf_plot", "land_plot", "land3d",
-                  "land3d_plotly", "group_plot")
+plot_outputs <- c("hist_plot", "grad_plot", "uni_plot", "uni_land_plot", "surf_plot", "surf3d", "surf3d_plotly",
+                  "land_plot", "land3d", "land3d_plotly", "group_plot")
 app_inputs <- list(fitness = "survival", traits = c("weight", "total_length"), group = "sex", within_group = TRUE,
                    per_group = TRUE, ftype = "auto", surf_method = "gam", surf_grid = 20, grid_n = 15,
                    land_method = "lattice", sim_n = 100, n_boot = 20, seed = 1, surf_full = FALSE, surf_far = NA,
@@ -16,7 +16,7 @@ app_inputs <- list(fitness = "survival", traits = c("weight", "total_length"), g
                    uni_trait = "weight", surf_x = "weight", surf_y = "total_length", classic = FALSE,
                    show_points = TRUE, show_groups = TRUE, point_alpha = 0.5, theme = "Viridis, orange and blue",
                    surf_unc = "none", show_opt = TRUE, show_mean = TRUE, show_support = FALSE, group_lines = TRUE,
-                   land_theme = "Viridis, orange and blue", land_view = "2d")
+                   land_theme = "Viridis, orange and blue", surf_view = "2d", land_view = "2d")
 
 # one session of the app: body() gets run_with(), which sets inputs, presses
 # Run (after the k slider's 600 ms, unless `.wait = FALSE`), opens every
@@ -107,7 +107,8 @@ test_that("each input refits only the steps that take it, and going back refits 
     list(set = list(uni_land = FALSE), fits = character()),
     list(set = list(theme = "Magma, white and black", classic = TRUE, show_points = FALSE, point_alpha = 0.3,
                     surf_unc = "band", land_theme = "Greys, orange and blue", show_opt = FALSE, show_mean = FALSE,
-                    show_groups = FALSE, group_lines = FALSE, show_support = TRUE, land_view = "3d"),
+                    show_groups = FALSE, group_lines = FALSE, show_support = TRUE, surf_view = "3d",
+                    land_view = "3d"),
          fits = character())
   )
   app <- shiny::shinyAppDir(system.file("app", package = "lande"))
