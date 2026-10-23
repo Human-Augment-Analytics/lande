@@ -52,6 +52,7 @@ Imports:
     dplyr (>= 1.1.0),
     fields,
     grDevices,
+    graphics,
     stats,
     utils
 Suggests:

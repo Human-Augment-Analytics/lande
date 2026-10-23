@@ -535,3 +535,117 @@ plot_correlated_fitness_enhanced <- function(
 
   return(p)
 }
+
+
+# ======================================================
+# plot_correlated_fitness_3d
+# 3D perspective view of the correlated fitness surface
+# ======================================================
+
+#' Plot Correlated Fitness Surface (3D Perspective)
+#'
+#' Draws the fitted fitness of a two-trait surface in perspective. Cells
+#' blanked by \code{mask} or \code{too_far} are left out, so only the part of
+#' the surface with data under it is drawn.
+#'
+#' @param tps Output list from \code{correlated_fitness_surface()}.
+#' @param trait_cols Character vector of length 2 specifying the trait column names.
+#' @param theta Numeric azimuthal viewing angle. Default is -30.
+#' @param phi Numeric colatitude viewing angle. Default is 30.
+#' @param color_palette Optional vector of colours for the surface. Defaults to viridis.
+#' @param show_peaks Logical; mark the interior peaks of the surface (the
+#'   rows of \code{tps$peaks} with \code{interior} \code{TRUE}) with gold
+#'   diamonds. Maxima at the edge of the data are not marked. Default is
+#'   \code{TRUE}.
+#' @param ... Additional arguments passed to \code{fields::drape.plot()}.
+#'
+#' @return The viewing transformation matrix from \code{fields::drape.plot()},
+#'   invisibly, which \code{grDevices::trans3d()} uses to add points.
+#' @examples
+#' prep <- prepare_selection_data(bumpus, "survival", c("total_length", "weight"))
+#' surf <- correlated_fitness_surface(prep, "survival", c("total_length", "weight"), grid_n = 30)
+#' plot_correlated_fitness_3d(surf, c("total_length", "weight"))
+#' @export
+plot_correlated_fitness_3d <- function(
+  tps,
+  trait_cols,
+  theta = -30,
+  phi = 30,
+  color_palette = NULL,
+  show_peaks = TRUE,
+  ...
+) {
+  # Input validation
+  stopifnot(is.list(tps), "grid" %in% names(tps))
+
+  if (length(trait_cols) != 2L) {
+    stop("The 3D view needs two traits; for one trait use univariate_spline() ",
+         "and plot_univariate_fitness()")
+  }
+
+  if (!requireNamespace("fields", quietly = TRUE)) {
+    stop("Package 'fields' is required for 3D surface plots. ",
+         "Install it with install.packages('fields').")
+  }
+
+  df <- tps$grid
+
+  if (!all(trait_cols %in% names(df))) {
+    stop("Trait columns not found in tps$grid.")
+  }
+  if (!".fit" %in% names(df)) {
+    stop("No fitness column found in grid.")
+  }
+
+  x <- df[[trait_cols[1]]]
+  y <- df[[trait_cols[2]]]
+
+  # correlated_fitness_surface() predicts on a regular grid, so the fit goes
+  # straight into a matrix. Masked cells stay NA and persp() leaves them out.
+  xu <- sort(unique(x))
+  yu <- sort(unique(y))
+  if (nrow(df) != length(xu) * length(yu)) {
+    stop("tps$grid is not a complete regular grid; cannot draw a 3D surface")
+  }
+  zmat <- matrix(NA_real_, nrow = length(xu), ncol = length(yu))
+  zmat[cbind(match(x, xu), match(y, yu))] <- df$.fit
+  if (all(is.na(zmat))) {
+    stop("Every cell of the surface is masked; nothing to draw")
+  }
+
+  if (is.null(color_palette)) {
+    if (requireNamespace("viridis", quietly = TRUE)) {
+      color_palette <- viridis::viridis(100)
+    } else {
+      color_palette <- grDevices::heat.colors(100)
+    }
+  }
+
+  pm <- fields::drape.plot(
+    x = xu,
+    y = yu,
+    z = zmat,
+    theta = theta,
+    phi = phi,
+    xlab = trait_cols[1],
+    ylab = trait_cols[2],
+    zlab = "Fitness",
+    main = "Correlated Fitness Surface (3D View)",
+    col = color_palette,
+    border = NA,
+    shade = 0.5,
+    ...
+  )
+
+  # interior peaks, the same gold diamond as the optimum in the 2D plots
+  pk <- tps$peaks
+  if (show_peaks && !is.null(pk) && nrow(pk) && all(c(trait_cols, "fit", "interior") %in% names(pk))) {
+    pk <- pk[pk$interior %in% TRUE, , drop = FALSE]
+    if (nrow(pk)) {
+      at <- grDevices::trans3d(pk[[trait_cols[1]]], pk[[trait_cols[2]]], pk$fit, pm)
+      graphics::points(at, pch = 23, bg = "gold", col = "black", cex = 1.4)
+    }
+  }
+
+  invisible(pm)
+}

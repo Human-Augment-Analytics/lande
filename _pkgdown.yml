@@ -79,6 +79,7 @@ reference:
   - correlated_fitness_surface
   - plot_correlated_fitness
   - plot_correlated_fitness_enhanced
+  - plot_correlated_fitness_3d
   - peak_difference
 - title: Adaptive landscape
   desc: Mean fitness against the population mean, and how it compares with the individual surface
