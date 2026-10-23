@@ -11,6 +11,8 @@ plot_correlated_fitness_3d(
   phi = 30,
   color_palette = NULL,
   show_peaks = TRUE,
+  border = "black",
+  lwd = 0.5,
   ...
 )
 }
@@ -30,6 +32,15 @@ rows of \code{tps$peaks} with \code{interior} \code{TRUE}) with gold
 diamonds. Maxima at the edge of the data are not marked. Default is
 \code{TRUE}.}
 
+\item{border}{Colour of the lines outlining each grid cell. Default is
+\code{"black"}; \code{NA} draws the surface without them. With more than
+100 grid values along a side the default lines are faded, more as the grid
+gets finer, so they do not hide the colours; give \code{border} to keep
+them at full strength.}
+
+\item{lwd}{Width of the cell outlines, which also sets the width of the box
+lines. Default is 0.5.}
+
 \item{...}{Additional arguments passed to \code{fields::drape.plot()}.}
 }
 \value{
@@ -39,7 +50,8 @@ The viewing transformation matrix from \code{fields::drape.plot()},
 \description{
 Draws the fitted fitness of a two-trait surface in perspective. Cells
 blanked by \code{mask} or \code{too_far} are left out, so only the part of
-the surface with data under it is drawn.
+the surface with data under it is drawn. Each grid cell is outlined, so a
+surface fitted with \code{grid_n = 80} shows as 79 x 79 small squares.
 }
 \examples{
 prep <- prepare_selection_data(bumpus, "survival", c("total_length", "weight"))

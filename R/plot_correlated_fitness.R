@@ -546,7 +546,8 @@ plot_correlated_fitness_enhanced <- function(
 #'
 #' Draws the fitted fitness of a two-trait surface in perspective. Cells
 #' blanked by \code{mask} or \code{too_far} are left out, so only the part of
-#' the surface with data under it is drawn.
+#' the surface with data under it is drawn. Each grid cell is outlined, so a
+#' surface fitted with \code{grid_n = 80} shows as 79 x 79 small squares.
 #'
 #' @param tps Output list from \code{correlated_fitness_surface()}.
 #' @param trait_cols Character vector of length 2 specifying the trait column names.
@@ -557,6 +558,13 @@ plot_correlated_fitness_enhanced <- function(
 #'   rows of \code{tps$peaks} with \code{interior} \code{TRUE}) with gold
 #'   diamonds. Maxima at the edge of the data are not marked. Default is
 #'   \code{TRUE}.
+#' @param border Colour of the lines outlining each grid cell. Default is
+#'   \code{"black"}; \code{NA} draws the surface without them. With more than
+#'   100 grid values along a side the default lines are faded, more as the grid
+#'   gets finer, so they do not hide the colours; give \code{border} to keep
+#'   them at full strength.
+#' @param lwd Width of the cell outlines, which also sets the width of the box
+#'   lines. Default is 0.5.
 #' @param ... Additional arguments passed to \code{fields::drape.plot()}.
 #'
 #' @return The viewing transformation matrix from \code{fields::drape.plot()},
@@ -573,6 +581,8 @@ plot_correlated_fitness_3d <- function(
   phi = 30,
   color_palette = NULL,
   show_peaks = TRUE,
+  border = "black",
+  lwd = 0.5,
   ...
 ) {
   # Input validation
@@ -621,6 +631,8 @@ plot_correlated_fitness_3d <- function(
     }
   }
 
+  if (missing(border)) border <- grid_line_colour(border, max(dim(zmat)))
+
   pm <- fields::drape.plot(
     x = xu,
     y = yu,
@@ -632,7 +644,8 @@ plot_correlated_fitness_3d <- function(
     zlab = "Fitness",
     main = "Correlated Fitness Surface (3D View)",
     col = color_palette,
-    border = NA,
+    border = border,
+    lwd = lwd,
     shade = 0.5,
     ...
   )
@@ -648,4 +661,12 @@ plot_correlated_fitness_3d <- function(
   }
 
   invisible(pm)
+}
+
+
+# Past 100 grid values a side the cell outlines would hide the colours, so the
+# default line colour fades in step with the grid.
+grid_line_colour <- function(border, n_side) {
+  if (is.na(border) || n_side <= 100) return(border)
+  grDevices::adjustcolor(border, alpha.f = (100 / n_side)^2)
 }

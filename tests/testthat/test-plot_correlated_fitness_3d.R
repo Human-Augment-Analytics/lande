@@ -49,3 +49,52 @@ test_that("the 3D surface works with groups", {
                                            group = "g", by_group = TRUE))
   for (s in each) expect_no_error(draws(plot_correlated_fitness_3d(s, c("z1", "z2"))))
 })
+
+test_that("each grid cell is outlined, and NA leaves the outlines off", {
+  skip_if_not_installed("fields")
+  set.seed(4)
+  n <- 200
+  df <- data.frame(z1 = rnorm(n), z2 = rnorm(n))
+  df$w <- 1 - 0.3 * df$z1^2 - 0.2 * df$z2^2 + rnorm(n, 0, 0.1)
+  s <- quiet(correlated_fitness_surface(df, "w", c("z1", "z2"), grid_n = 20, method = "tps"))
+  seen <- NULL
+  local_mocked_bindings(drape.plot = function(x, y, z, ...) {
+    seen <<- list(n = c(length(x), length(y)), z = z, ...)
+    diag(4)
+  }, .package = "fields")
+  plot_correlated_fitness_3d(s, c("z1", "z2"), show_peaks = FALSE)
+  expect_equal(seen$border, "black")
+  expect_equal(seen$lwd, 0.5)
+  expect_equal(seen$n, c(20L, 20L))
+  # masked cells stay NA, so persp() draws neither the cell nor its outline
+  expect_equal(sum(is.na(seen$z)), sum(is.na(s$grid$.fit)))
+  plot_correlated_fitness_3d(s, c("z1", "z2"), show_peaks = FALSE, border = NA)
+  expect_true(is.na(seen$border))
+  plot_correlated_fitness_3d(s, c("z1", "z2"), show_peaks = FALSE, border = "grey40", lwd = 1)
+  expect_equal(seen$border, "grey40")
+  expect_equal(seen$lwd, 1)
+})
+
+test_that("the default outlines fade only on very fine grids", {
+  expect_equal(grid_line_colour("black", 20), "black")
+  expect_equal(grid_line_colour("black", 100), "black")
+  expect_true(is.na(grid_line_colour(NA, 200)))
+  fine <- grDevices::col2rgb(grid_line_colour("black", 200), alpha = TRUE)
+  finer <- grDevices::col2rgb(grid_line_colour("black", 400), alpha = TRUE)
+  expect_lt(fine["alpha", 1], 255)
+  expect_lt(finer["alpha", 1], fine["alpha", 1])
+})
+
+test_that("an 80 by 80 surface draws with its grid lines, fine grids too", {
+  skip_if_not_installed("fields")
+  set.seed(5)
+  n <- 200
+  df <- data.frame(z1 = rnorm(n), z2 = rnorm(n))
+  df$w <- 1 - 0.3 * df$z1^2 - 0.2 * df$z2^2 + rnorm(n, 0, 0.1)
+  for (k in c(5, 80, 120)) {
+    s <- quiet(correlated_fitness_surface(df, "w", c("z1", "z2"), grid_n = k, method = "gam"))
+    expect_no_error(draws(plot_correlated_fitness_3d(s, c("z1", "z2"))))
+  }
+  s <- quiet(correlated_fitness_surface(df, "w", c("z1", "z2"), grid_n = 120, method = "gam"))
+  expect_no_error(draws(plot_correlated_fitness_3d(s, c("z1", "z2"), border = "black")))
+})
