@@ -810,12 +810,18 @@ server <- function(input, output, session) {
   current <- reactive({
     if (input$dataset == "Upload CSV...") {
       req(input$file)
-      got <- tryCatch(read_upload(input$file$datapath), error = function(e) e)
+      # Read only a file Shiny itself received. Shiny puts each upload in its own
+      # randomly named folder inside this R process's temp folder; a hand-made
+      # WebSocket message could otherwise set datapath to any path the process
+      # can read, so anything outside that temp folder (or missing) is refused.
+      p <- tryCatch(normalizePath(input$file$datapath[1], mustWork = TRUE), error = function(e) NULL)
+      req(p, startsWith(p, paste0(normalizePath(tempdir()), .Platform$file.sep)))
+      got <- tryCatch(read_upload(p), error = function(e) e)
       validate(need(!inherits(got, "error"), sprintf(
         "Couldn't read %s as a CSV file: %s. Save it from your spreadsheet as CSV and upload it again.",
         input$file$name, if (inherits(got, "error")) conditionMessage(got) else "")))
       list(data = got$data, fitness = NULL, traits = NULL, group = NULL,
-           source = input$file$name, read_args = got$read_args)
+           source = input$file$name, read_args = got$read_args, file_path = p)
     } else c(load_dataset(input$dataset), source = paste(input$dataset, "(bundled)"))
   })
 
@@ -918,7 +924,7 @@ server <- function(input, output, session) {
          # what was run, for the script, even if the inputs change afterwards
          dataset = input$dataset, file_name = if (!is.null(input$file)) input$file$name,
          read_args = current()$read_args,
-         file_path = if (!is.null(input$file)) input$file$datapath,
+         file_path = current()$file_path,
          ftype_how = if (input$ftype == "auto") "detected" else "set by hand",
          per_group = isTRUE(input$per_group),
          seed = if (is.numeric(input$seed) && !is.na(input$seed)) round(input$seed) else 1,
