@@ -526,6 +526,12 @@ interpret <- function(r, traits, ftype, n, group) {
 sd_lab <- function(t, mean = FALSE) paste0(if (mean) "mean " else "", t, " (SD)")
 # links open in a new tab, so the session and its results stay open
 doc_link <- function(text, href) tags$a(href = href, target = "_blank", rel = "noopener", text)
+# the site's pages, so the app links back to all of them
+SITE <- "https://human-augment-analytics.github.io/lande/"
+CASE_STUDIES <- c("Bumpus sparrows" = "articles/bumpus-sparrows.html",
+                  "San Salvador pupfish" = "articles/pupfish.html",
+                  "Darwin's finch community" = "articles/finch-community.html",
+                  "Darwin's finch annual selection" = "articles/finches-year-by-year.html")
 # a result's heading with its downloads on the right
 res_head <- function(title, ...) div(class = "res-head", h4(class = "sec", title), div(class = "res-dl", ...))
 dl_btn <- function(id, label, what) downloadButton(id, label, title = what, `aria-label` = what)
@@ -570,6 +576,13 @@ ui <- fluidPage(
      .app-header .app-links{margin-left:auto;display:flex;flex-wrap:wrap;gap:16px;font-size:14px}
      .app-header .app-links a{text-decoration:underline;text-decoration-color:rgba(53,102,83,.45);text-underline-offset:3px}
      .app-header .app-links a:hover,.app-header .app-links a:focus{text-decoration-color:currentColor}
+     .app-links details.menu{position:relative}
+     .app-links details.menu summary{margin:0;font-weight:400;color:#356653;list-style:none;text-decoration:underline;text-decoration-color:rgba(53,102,83,.45);text-underline-offset:3px}
+     .app-links details.menu summary::-webkit-details-marker{display:none}
+     .app-links details.menu summary::after{content:' \\25BE';text-decoration:none;display:inline-block;margin-left:2px}
+     .app-links details.menu .menu-list{position:absolute;right:0;top:calc(100% + 6px);z-index:1000;background:#FFFFFF;border:1px solid #DEE5DF;border-radius:4px;box-shadow:0 4px 12px rgba(36,51,45,.12);padding:6px 0;min-width:240px}
+     .app-links details.menu .menu-list a{display:block;padding:6px 14px;text-decoration:none;white-space:nowrap}
+     .app-links details.menu .menu-list a:hover,.app-links details.menu .menu-list a:focus{background:#EEF3EF}
      .dl-all{margin-top:8px}
      .intro{background:#EEF3EF;border-left:3px solid #356653;padding:10px 14px;margin:0 0 12px;font-size:14px}
      .res-head{display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:8px;margin:18px 0 8px}
@@ -580,6 +593,13 @@ ui <- fluidPage(
      @media (max-width:767px){#land_plot{height:400px !important}}"
   ))),
   tags$head(tags$link(rel = "icon", type = "image/png", href = "favicon.png")),
+  # the Case studies menu closes on a click outside it or on one of its links
+  tags$head(tags$script(HTML(
+    "document.addEventListener('click', function (e) {
+       document.querySelectorAll('details.menu[open]').forEach(function (d) {
+         if (!d.contains(e.target) || e.target.closest('a')) d.removeAttribute('open');
+       });
+     });"))),
   # drop the connection after IDLE_MINUTES without a click or keypress, so a tab
   # left open does not keep the server instance awake
   if (IDLE_MINUTES > 0) tags$head(tags$script(HTML(paste0("
@@ -603,8 +623,13 @@ ui <- fluidPage(
       tags$img(src = "logo.png", alt = ""),
       div(tags$h1("lande"), div(class = "app-sub", "Evolutionary selection analysis")),
       div(class = "app-links",
-          doc_link("Guide", "https://human-augment-analytics.github.io/lande/articles/evolutionary-selection-analysis.html"),
-          doc_link("Reference", "https://human-augment-analytics.github.io/lande/reference/"),
+          doc_link("Home", SITE),
+          doc_link("Guide", paste0(SITE, "articles/evolutionary-selection-analysis.html")),
+          tags$details(class = "menu",
+                       tags$summary("Case studies"),
+                       div(class = "menu-list", lapply(names(CASE_STUDIES), function(n)
+                         doc_link(n, paste0(SITE, CASE_STUDIES[[n]]))))),
+          doc_link("Reference", paste0(SITE, "reference/")),
           doc_link("Report a problem", "https://github.com/Human-Augment-Analytics/lande/issues"))),
   sidebarLayout(
     sidebarPanel(
