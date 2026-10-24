@@ -559,12 +559,18 @@ plot_correlated_fitness_enhanced <- function(
 #'   diamonds. Maxima at the edge of the data are not marked. Default is
 #'   \code{TRUE}.
 #' @param border Colour of the lines outlining each grid cell. Default is
-#'   \code{"black"}; \code{NA} draws the surface without them. With more than
-#'   100 grid values along a side the default lines are faded, more as the grid
-#'   gets finer, so they do not hide the colours; give \code{border} to keep
-#'   them at full strength.
+#'   \code{"grey30"}, a dark grey that keeps the squares clear without
+#'   darkening the colours as black lines do; \code{NA} draws the surface
+#'   without them. With more than 100 grid values along a side the default
+#'   lines are faded, more as the grid gets finer, so they do not hide the
+#'   colours; give \code{border} to keep them at full strength.
 #' @param lwd Width of the cell outlines, which also sets the width of the box
 #'   lines. Default is 0.5.
+#' @param shade Strength of the shading that shows the relief, from 0 (flat
+#'   colours, no shading) towards 1 (darker slopes), passed to
+#'   \code{graphics::persp()}. Default is 0.15, light enough that the colours
+#'   stay close to the colour bar while the hills still stand out. Use
+#'   \code{NA} to switch the shading off.
 #' @param ... Additional arguments passed to \code{fields::drape.plot()}.
 #'
 #' @return The viewing transformation matrix from \code{fields::drape.plot()},
@@ -581,8 +587,9 @@ plot_correlated_fitness_3d <- function(
   phi = 30,
   color_palette = NULL,
   show_peaks = TRUE,
-  border = "black",
+  border = "grey30",
   lwd = 0.5,
+  shade = 0.15,
   ...
 ) {
   # Input validation
@@ -646,7 +653,7 @@ plot_correlated_fitness_3d <- function(
     col = color_palette,
     border = border,
     lwd = lwd,
-    shade = 0.5,
+    shade = shade,
     ...
   )
 

@@ -1274,12 +1274,17 @@ server <- function(input, output, session) {
     pal <- theme_of(input$theme)$ramp(9)
     cs <- lapply(seq_along(pal), function(i) list((i - 1) / (length(pal) - 1), pal[i]))
     z_name <- if (s$ftype == "binary") "Survival" else "Fitness"
-    # thin dark lines at every grid value outline each cell, as in the drape view
+    # thin dark grey lines at every grid value outline each cell, as in the drape
+    # view, faint enough that the colours stay light
     cell_lines <- function(v) list(show = TRUE, start = v[1], end = v[length(v)] + diff(v[1:2]) / 2,
-                                   size = diff(v[1:2]), color = "rgba(0,0,0,0.6)", width = 1)
+                                   size = diff(v[1:2]), color = "rgba(77,77,77,0.5)", width = 1)
     p <- plotly::plot_ly()
     p <- plotly::add_surface(p, x = xu, y = yu, z = z, colorscale = cs, opacity = 0.95,
                              contours = list(x = cell_lines(xu), y = cell_lines(yu)),
+                             # soft light, as the drape view's light shading: the colours
+                             # stay near the colour bar and the slopes only dim a little
+                             lighting = list(ambient = 0.9, diffuse = 0.35, specular = 0.02,
+                                             roughness = 0.9, fresnel = 0.05),
                              colorbar = list(title = z_name),
                              hovertemplate = paste0(tr[1], ": %{x:.2f}<br>", tr[2], ": %{y:.2f}<br>", tolower(z_name), ": %{z:.3f}<extra></extra>"))
     pk <- surf$peaks

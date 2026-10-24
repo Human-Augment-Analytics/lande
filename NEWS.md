@@ -1,9 +1,9 @@
 # lande (development version)
 
 * `plot_correlated_fitness_3d()` draws the fitted fitness surface in 3D as a
-  mesh of grid squares, only where there are data, with its interior peaks
-  marked. The app's fitness surface tab can show it too, with the group means
-  and high points.
+  mesh of grid squares outlined in dark grey, only where there are data, with
+  its interior peaks marked and light shading that `shade` sets. The app's
+  fitness surface tab can show it too, with the group means and high points.
 * The app is much faster. Run shows the gradients at once, each fit is kept
   so a change refits only what it affects, and the spline band runs on worker
   processes (`options(lande.workers = 0)` turns them off). The landscape now
