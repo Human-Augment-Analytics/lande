@@ -48,7 +48,7 @@ Imports:
     mgcv,
     MASS,
     Matrix,
-    ggplot2 (>= 3.4.0),
+    ggplot2 (>= 3.5.0),
     dplyr (>= 1.1.0),
     fields,
     grDevices,

@@ -16,7 +16,7 @@ Tabs:
   bootstrap band, and optionally the adaptive landscape for that trait.
 - **Fitness surface**: two-trait surface with the individuals overlaid at an
   opacity you set, drawn only where there are data, in 2D or as a rotatable
-  3D view. Five colour themes, each
+  3D view. Six colour themes, each
   a surface palette with point colours that stand out against it. With a
   group, each group's mean and the highest point of the surface within its
   own range are marked, joined by a dashed line (switch in Advanced

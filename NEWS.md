@@ -2,8 +2,11 @@
 
 * `plot_correlated_fitness_3d()` draws the fitted fitness surface in 3D as a
   mesh of grid squares outlined in dark grey, only where there are data, with
-  its interior peaks marked and light shading that `shade` sets. The app's
-  fitness surface tab can show it too, with the group means and high points.
+  its interior peaks marked and light shading that `shade` sets.
+  `color_palette = "jet"` gives the rainbow ramp of many published surfaces;
+  viridis stays the default as it reads better for colour-blind viewers. The
+  app's fitness surface tab can show it too, with the group means and high
+  points, and a jet colour theme for the 2D and 3D views.
 * The app is much faster. Run shows the gradients at once, each fit is kept
   so a change refits only what it affects, and the spline band runs on worker
   processes (`options(lande.workers = 0)` turns them off). The landscape now

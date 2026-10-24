@@ -135,3 +135,42 @@ test_that("an 80 by 80 surface draws with its grid lines, fine grids too", {
   s <- quiet(correlated_fitness_surface(df, "w", c("z1", "z2"), grid_n = 120, method = "gam"))
   expect_no_error(draws(plot_correlated_fitness_3d(s, c("z1", "z2"), border = "black")))
 })
+
+test_that("the jet ramp runs from dark blue through cyan and yellow to dark red", {
+  jet <- jet_colours(9)
+  expect_equal(jet, c("#00007F", "#0000FF", "#007FFF", "#00FFFF", "#7FFF7F",
+                      "#FFFF00", "#FF7F00", "#FF0000", "#7F0000"))
+  expect_length(jet_colours(100), 100)
+  expect_equal(jet_colours(100)[c(1, 100)], c("#00007F", "#7F0000"))
+})
+
+test_that("color_palette takes 'jet' or a vector of colours, viridis by default", {
+  skip_if_not_installed("fields")
+  set.seed(8)
+  n <- 200
+  df <- data.frame(z1 = rnorm(n), z2 = rnorm(n))
+  df$w <- 1 - 0.3 * df$z1^2 - 0.2 * df$z2^2 + rnorm(n, 0, 0.1)
+  s <- quiet(correlated_fitness_surface(df, "w", c("z1", "z2"), grid_n = 20, method = "tps"))
+  seen <- NULL
+  local_mocked_bindings(drape.plot = function(x, y, z, ...) {
+    seen <<- list(...)
+    diag(4)
+  }, .package = "fields")
+  plot_correlated_fitness_3d(s, c("z1", "z2"), show_peaks = FALSE, color_palette = "jet")
+  expect_equal(seen$col, jet_colours(100))
+  plot_correlated_fitness_3d(s, c("z1", "z2"), show_peaks = FALSE, color_palette = c("red", "blue"))
+  expect_equal(seen$col, c("red", "blue"))
+  skip_if_not_installed("viridis")
+  plot_correlated_fitness_3d(s, c("z1", "z2"), show_peaks = FALSE)
+  expect_equal(seen$col, viridis::viridis(100))
+})
+
+test_that("the jet surface draws", {
+  skip_if_not_installed("fields")
+  set.seed(9)
+  n <- 200
+  df <- data.frame(z1 = rnorm(n), z2 = rnorm(n))
+  df$w <- 1 - 0.3 * df$z1^2 - 0.2 * df$z2^2 + rnorm(n, 0, 0.1)
+  s <- quiet(correlated_fitness_surface(df, "w", c("z1", "z2"), grid_n = 30, method = "gam"))
+  expect_no_error(draws(plot_correlated_fitness_3d(s, c("z1", "z2"), color_palette = "jet")))
+})

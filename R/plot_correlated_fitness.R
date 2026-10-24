@@ -553,7 +553,12 @@ plot_correlated_fitness_enhanced <- function(
 #' @param trait_cols Character vector of length 2 specifying the trait column names.
 #' @param theta Numeric azimuthal viewing angle. Default is -30.
 #' @param phi Numeric colatitude viewing angle. Default is 30.
-#' @param color_palette Optional vector of colours for the surface. Defaults to viridis.
+#' @param color_palette Colours for the surface: a vector of colours, or
+#'   \code{"jet"} for the rainbow ramp (dark blue through cyan, yellow and red
+#'   to dark red) used in many published fitness surfaces. Defaults to
+#'   viridis. Jet is harder to read for colour-blind viewers and its bright
+#'   bands can look like steps that are not in the surface, so viridis is the
+#'   safer choice for most figures.
 #' @param show_peaks Logical; mark the interior peaks of the surface (the
 #'   rows of \code{tps$peaks} with \code{interior} \code{TRUE}) with gold
 #'   diamonds. Maxima at the edge of the data are not marked. Default is
@@ -636,6 +641,8 @@ plot_correlated_fitness_3d <- function(
     } else {
       color_palette <- grDevices::heat.colors(100)
     }
+  } else if (identical(color_palette, "jet")) {
+    color_palette <- jet_colours(100)
   }
 
   if (missing(border)) border <- grid_line_colour(border, max(dim(zmat)))
@@ -676,4 +683,13 @@ plot_correlated_fitness_3d <- function(
 grid_line_colour <- function(border, n_side) {
   if (is.na(border) || n_side <= 100) return(border)
   grDevices::adjustcolor(border, alpha.f = (100 / n_side)^2)
+}
+
+
+# The classic jet rainbow: dark blue through cyan, yellow and red to dark red.
+# fields::tim.colors() has since moved to a turbo-like ramp, so jet is built
+# here from its nine anchor colours.
+jet_colours <- function(n) {
+  grDevices::colorRampPalette(c("#00007F", "#0000FF", "#007FFF", "#00FFFF", "#7FFF7F",
+                                "#FFFF00", "#FF7F00", "#FF0000", "#7F0000"))(n)
 }

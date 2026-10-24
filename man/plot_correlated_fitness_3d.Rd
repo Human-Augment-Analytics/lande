@@ -26,7 +26,12 @@ plot_correlated_fitness_3d(
 
 \item{phi}{Numeric colatitude viewing angle. Default is 30.}
 
-\item{color_palette}{Optional vector of colours for the surface. Defaults to viridis.}
+\item{color_palette}{Colours for the surface: a vector of colours, or
+\code{"jet"} for the rainbow ramp (dark blue through cyan, yellow and red
+to dark red) used in many published fitness surfaces. Defaults to
+viridis. Jet is harder to read for colour-blind viewers and its bright
+bands can look like steps that are not in the surface, so viridis is the
+safer choice for most figures.}
 
 \item{show_peaks}{Logical; mark the interior peaks of the surface (the
 rows of \code{tps$peaks} with \code{interior} \code{TRUE}) with gold

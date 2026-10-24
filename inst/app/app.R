@@ -276,6 +276,10 @@ fmt_p <- function(p) ifelse(is.na(p), "", ifelse(p < 0.001, "< 0.001", paste("="
 pm <- function(est, se) paste0(fmt(est), " ± ", fmt(se))
 sq <- function(t) paste0(t, "²")
 
+# the classic jet rainbow of many published fitness surfaces, dark blue through
+# cyan, yellow and red to dark red; harder to read for colour-blind viewers
+jet <- grDevices::colorRampPalette(c("#00007F", "#0000FF", "#007FFF", "#00FFFF", "#7FFF7F",
+                                     "#FFFF00", "#FF7F00", "#FF0000", "#7F0000"))
 # colour themes for the surface and landscape plots: a palette for the surface
 # and two point colours that stand out against it (perished/survived, or the
 # low and high ends of a continuous fitness scale)
@@ -294,7 +298,10 @@ THEMES <- list(
                                     points = c("#B2182B", "#4393C3")),
   "Greys, orange and blue"   = list(fill = function(...) ggplot2::scale_fill_grey(start = 0.92, end = 0.25, ...),
                                     ramp = function(n) grDevices::grey.colors(n, start = 0.92, end = 0.25),
-                                    points = c("#D55E00", "#0072B2"))
+                                    points = c("#D55E00", "#0072B2")),
+  "Rainbow (jet), white and black" = list(fill = function(...) ggplot2::discrete_scale("fill", palette = jet, ...),
+                                          ramp = jet,
+                                          points = c("white", "black"))
 )
 theme_of <- function(theme) if (!is.null(theme) && theme %in% names(THEMES)) THEMES[[theme]] else THEMES[[1]]
 # shorter legend labels for the binned surface and landscape fills, "0.064–0.13"
