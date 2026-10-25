@@ -96,7 +96,7 @@ plot_temporal_landscape(years, type = "heatmap")
 
 ## App
 
-The app runs online at <https://lande.thestroudlab.com/>, with nothing to
+The app runs online at <https://lande.thestroudlab.com/app/>, with nothing to
 install. In R, `run_app()` opens the same app in a browser: bundled or
 uploaded data, gradients, fitness functions, surface, landscape and per-group
 results, with the fitting options in Advanced settings. Needs `shiny`; `plotly` adds the
