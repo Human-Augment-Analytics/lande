@@ -59,6 +59,14 @@ drew fewer than asked. These limits are on when the app runs on its own, as on
 a server. `run_app()` turns them off, and `options(lande.limits = )` sets them
 either way.
 
+On a server that starts the app with `LANDE_NOTICE_FILE` set (the lab server's
+updater does), every open page shows a bar across the top while a restart is
+planned, with the time and the minutes left. The notice is a small JSON file
+with the restart time (`restart_at`, seconds since 1970) and optionally `at`
+and `reason`; the page also fetches `lande-notice.json` every 30 seconds where
+the server serves the same file, so the bar arrives while the app is busy.
+Without the variable nothing is added to the page.
+
 ## Run locally
 
 ```r

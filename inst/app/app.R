@@ -24,6 +24,26 @@ has_zip <- requireNamespace("zip", quietly = TRUE)
 # turns the disconnect off
 IDLE_MINUTES <- getOption("lande.idle_minutes", 10)
 
+# Maintenance notice. On the lab server the updater writes a small JSON file
+# (restart time, reason) before it restarts the app, and starts the workers
+# with LANDE_NOTICE_FILE pointing at it. Unset (the GitHub Pages copy, a local
+# run) means none of this is used. A missing, partly written or malformed file
+# counts as no notice, and so does one more than 15 minutes past its time.
+NOTICE_FILE <- Sys.getenv("LANDE_NOTICE_FILE")
+read_notice <- function(path) {
+  off <- list(active = FALSE)
+  txt <- tryCatch(suppressWarnings(readLines(path, n = 50L, warn = FALSE)), error = function(e) NULL)
+  if (!length(txt)) return(off)
+  x <- tryCatch(jsonlite::fromJSON(paste(txt, collapse = "\n")), error = function(e) NULL)
+  at <- suppressWarnings(as.numeric(if (is.list(x)) x$restart_at))
+  if (length(at) != 1L || !is.finite(at)) return(off)
+  left <- at - as.numeric(Sys.time())
+  if (left < -900) return(off)
+  when <- if (is.character(x$at) && length(x$at) == 1L && nzchar(x$at)) substr(x$at, 1, 20)
+          else format(as.POSIXct(at, origin = "1970-01-01"), "%H:%M")
+  list(active = TRUE, restart_at = at, seconds = round(left), at = when, update = identical(x$reason, "update"))
+}
+
 # fixed seed for the random steps; restores the RNG afterwards
 with_seed <- function(seed, expr) {
   had <- exists(".Random.seed", envir = globalenv(), inherits = FALSE)
@@ -641,6 +661,68 @@ ui <- fluidPage(
       reset();
     })();
   ")))),
+  # the maintenance notice: a bar across the top of the page while a restart is
+  # planned. It reaches the page two ways: the server sends it when the notice
+  # file changes, and the page itself fetches lande-notice.json (which nginx
+  # serves from the same file) every 30 seconds, so it arrives even while this
+  # worker is busy with a long run and cannot send anything. The page keeps the
+  # minutes current itself. Only on a server that sets LANDE_NOTICE_FILE.
+  if (nzchar(NOTICE_FILE)) tags$script(HTML("
+    (function () {
+      var bar = null, timer = null, cur = null;
+      function hide() {
+        cur = null;
+        if (timer) { clearInterval(timer); timer = null; }
+        if (bar) { bar.remove(); bar = null; }
+      }
+      function show() {
+        var left = Math.round((cur.deadline - Date.now()) / 1000);
+        if (left < -900) { hide(); return; }
+        var mins = Math.floor(left / 60);
+        var text = left > 0
+          ? (cur.update ? 'lande will restart for an update' : 'lande will restart') + ' at ' + cur.at + ' (in ' +
+            (mins < 1 ? 'less than a minute' : mins === 1 ? '1 minute' : mins + ' minutes') + '). ' +
+            'Download any results you need before then; you will need to reload the page afterwards.'
+          : (cur.update ? 'lande is restarting for an update now.' : 'lande is restarting now.') +
+            ' Reload the page in a minute or two.';
+        if (bar.textContent !== text) bar.textContent = text;
+      }
+      // n: restart_at (epoch), seconds left by the server's clock (below 0 once
+      // the time has passed), at (the time to show), update; or null
+      function set(n) {
+        if (!n) { hide(); return; }
+        if (cur && cur.restart_at === n.restart_at && cur.update === n.update) return;
+        cur = { restart_at: n.restart_at, at: n.at, update: n.update, deadline: Date.now() + 1000 * n.seconds };
+        if (!bar) {
+          bar = document.createElement('div');
+          bar.id = 'lande-notice';
+          bar.setAttribute('role', 'status');
+          bar.style.cssText = 'position:sticky;top:0;z-index:2000;background:#fff3cd;color:#5c4400;' +
+            'border-bottom:1px solid #e3c766;padding:10px 20px;font-size:15px;font-weight:600';
+          document.body.insertBefore(bar, document.body.firstChild);
+        }
+        show();
+        if (!timer) timer = setInterval(function () { if (cur) show(); }, 5000);
+      }
+      Shiny.addCustomMessageHandler('lande_notice', function (n) { set(n && n.active ? n : null); });
+      function look() {
+        fetch('lande-notice.json', { cache: 'no-store' }).then(function (r) {
+          // not 200: nothing serves the file here (no nginx in front), so leave it to the server
+          if (r.status !== 200) return;
+          var now = Date.parse(r.headers.get('Date') || '');
+          if (isNaN(now)) now = Date.now();
+          return r.json().then(function (x) {
+            var at = x && typeof x.restart_at === 'number' ? x.restart_at : NaN;
+            if (!isFinite(at) || at - now / 1000 < -900) { set(null); return; }
+            set({ restart_at: at, seconds: Math.round(at - now / 1000), update: x.reason === 'update',
+                  at: typeof x.at === 'string' && x.at ? x.at.slice(0, 20) : new Date(at * 1000).toTimeString().slice(0, 5) });
+          });
+        }).catch(function () {});
+      }
+      setTimeout(look, 3000);
+      setInterval(look, 30000);
+    })();
+  ")),
   div(class = "app-header",
       tags$img(src = "logo.png", alt = ""),
       div(tags$h1("lande"), div(class = "app-sub", "Evolutionary selection analysis")),
@@ -1680,6 +1762,16 @@ server <- function(input, output, session) {
         zip_folder(f, dir)
       })
     })
+
+  # the maintenance notice (see read_notice): the file is looked at every 30
+  # seconds, which costs one stat when it is absent, and read only when it
+  # changes. Sent ahead of the other observers, so a page gets it at once.
+  if (nzchar(NOTICE_FILE)) {
+    notice <- reactivePoll(30000, session,
+      checkFunc = function() paste(unlist(file.info(NOTICE_FILE, extra_cols = FALSE)[c("size", "mtime", "ctime")]), collapse = " "),
+      valueFunc = function() read_notice(NOTICE_FILE))
+    observe(session$sendCustomMessage("lande_notice", notice()), priority = 100)
+  }
 }
 
 shinyApp(ui, server)
