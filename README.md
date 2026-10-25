@@ -1,5 +1,9 @@
 # lande <img src="man/figures/logo.png" align="right" height="139" alt="" />
 
+<!-- badges: start -->
+[![CRAN status](https://www.r-pkg.org/badges/version/lande)](https://CRAN.R-project.org/package=lande)
+<!-- badges: end -->
+
 An R package for Lande-Arnold analyses of natural selection.
 
 The package estimates selection differentials and linear (beta), quadratic
@@ -135,3 +139,13 @@ surface a thin-plate basis chosen by REML; both can be changed with `bs` and
 
 See `vignette("evolutionary-selection-analysis")` for the maths and worked
 examples.
+
+## Citation
+
+If you use lande in a paper, please cite it:
+
+Zhou V, Khan AS, Yu C, Papke T, Al Nabhani D, Garcia-Costoya G, Stroud JT (2026).
+lande: Standardised Analyses of Natural Selection Data. R package.
+<https://doi.org/10.32614/CRAN.package.lande>
+
+`citation("lande")` gives a BibTeX entry for the version you have.

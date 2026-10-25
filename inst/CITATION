@@ -1,0 +1,15 @@
+# the year CRAN published this version, or the year it was built; a folder
+# installed straight from a checkout has neither, so it takes this year
+year <- sub("-.*", "", c(meta$`Date/Publication`, meta$Packaged, format(Sys.Date()))[1])
+
+bibentry(
+  bibtype = "Manual",
+  title = "{lande}: Standardised Analyses of Natural Selection Data",
+  author = c(person("Vanessa", "Zhou"), person(c("Ali", "Sean"), "Khan"), person("Calvin", "Yu"),
+             person("Taylor", "Papke"), person("Dima", "Al Nabhani"), person("Guillermo", "Garcia-Costoya"),
+             person(c("James", "T."), "Stroud")),
+  year = year,
+  note = sprintf("R package version %s", meta$Version),
+  doi = "10.32614/CRAN.package.lande",
+  url = "https://CRAN.R-project.org/package=lande"
+)

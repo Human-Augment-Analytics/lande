@@ -7,7 +7,7 @@ Authors@R:
         person("Vanessa", "Zhou",
             role = c("aut"),
             comment = c(affiliation = "College of Computing, Georgia Institute of Technology, Atlanta, GA, United States")),
-        person("Ali Sean", "Khan",
+        person(c("Ali", "Sean"), "Khan",
             role = c("aut"),
             comment = c(affiliation = "College of Computing, Georgia Institute of Technology, Atlanta, GA, United States")),
         person("Calvin", "Yu",
