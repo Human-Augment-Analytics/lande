@@ -1,5 +1,8 @@
 url: https://human-augment-analytics.github.io/lande/
 
+development:
+  mode: auto
+
 template:
   bootstrap: 5
   bootswatch: litera
