@@ -569,7 +569,7 @@ sd_lab <- function(t, mean = FALSE) paste0(if (mean) "mean " else "", t, " (SD)"
 # links open in a new tab, so the session and its results stay open
 doc_link <- function(text, href) tags$a(href = href, target = "_blank", rel = "noopener", text)
 # the site's pages, so the app links back to all of them
-SITE <- "https://human-augment-analytics.github.io/lande/"
+SITE <- "https://lande.thestroudlab.com/"
 CASE_STUDIES <- c("Bumpus sparrows" = "articles/bumpus-sparrows.html",
                   "San Salvador pupfish" = "articles/pupfish.html",
                   "Darwin's finch community" = "articles/finch-community.html",
