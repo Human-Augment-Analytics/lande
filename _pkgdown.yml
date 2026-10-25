@@ -39,7 +39,7 @@ navbar:
         href: articles/finches-year-by-year.html
     app:
       text: App
-      href: https://lande.thestroudlab.com/
+      href: https://lande.thestroudlab.com/app/
 
 articles:
 - title: Guide
