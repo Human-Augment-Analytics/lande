@@ -1,13 +1,13 @@
 Package: lande
 Type: Package
-Title: Tools for Evolutionary Selection Analysis
-Version: 0.1.0
+Title: Standardised Analyses of Natural Selection Data
+Version: 0.1.1.9000
 Authors@R: 
     c(
         person("Vanessa", "Zhou",
             role = c("aut"),
             comment = c(affiliation = "College of Computing, Georgia Institute of Technology, Atlanta, GA, United States")),
-        person("Ali Sean", "Khan",
+        person(c("Ali", "Sean"), "Khan",
             role = c("aut"),
             comment = c(affiliation = "College of Computing, Georgia Institute of Technology, Atlanta, GA, United States")),
         person("Calvin", "Yu",
@@ -35,7 +35,7 @@ Description: Estimates selection differentials and linear, quadratic and
     drawn only where there are data, and computes adaptive landscapes of mean
     fitness against the population mean for one or two traits, by period and
     for several groups on one surface. Includes bootstrap intervals, a
-    combined results table and a Shiny app.
+    combined results table and a 'shiny' app.
 License: MIT + file LICENSE
 URL: https://github.com/Human-Augment-Analytics/lande,
     https://human-augment-analytics.github.io/lande/
@@ -48,25 +48,28 @@ Imports:
     mgcv,
     MASS,
     Matrix,
-    ggplot2 (>= 3.4.0),
-    dplyr,
+    ggplot2 (>= 3.5.0),
+    dplyr (>= 1.1.0),
     fields,
     grDevices,
+    graphics,
     stats,
     utils
 Suggests:
     akima,
     car,
     ggrepel,
+    parallel,
     patchwork,
     performance,
     plotly,
     shiny,
     viridis,
+    zip,
     knitr,
     RhpcBLASctl,
     rmarkdown,
-    testthat (>= 3.0.0)
+    testthat (>= 3.1.7)
 VignetteBuilder: knitr, rmarkdown
 Config/testthat/edition: 3
 Config/roxygen2/version: 8.0.0

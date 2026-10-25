@@ -15,7 +15,8 @@ Tabs:
 - **Fitness functions**: cubic-spline fitness function per trait with a
   bootstrap band, and optionally the adaptive landscape for that trait.
 - **Fitness surface**: two-trait surface with the individuals overlaid at an
-  opacity you set, drawn only where there are data. Five colour themes, each
+  opacity you set, drawn only where there are data, in 2D or as a rotatable
+  3D view. Six colour themes, each
   a surface palette with point colours that stand out against it. With a
   group, each group's mean and the highest point of the surface within its
   own range are marked, joined by a dashed line (switch in Advanced
@@ -27,11 +28,44 @@ Tabs:
 
 Bootstrap, spline band and landscape simulation all run from the seed in
 Advanced settings, so repeated runs match. Advanced settings also hold the
-fitness type, the spline and surface basis (cubic regression, thin plate or
+fitness type, the landscape method (lattice by default, which makes the same
+draws as the original simulation; Gaussian convolution; or the simulation
+itself), the spline and surface basis (cubic regression, thin plate or
 P-spline) and smoothing criterion (GCV, REML or ML), the surface basis size
 k, a switch to draw the surface over the whole grid rather than only where
 there are data, a distance rule that blanks cells far from any individual,
 and the switch for the line from each group mean to its peak.
+
+Run shows the data and gradients first and fits the rest under the progress
+bar. Each fit is kept, by its data and settings, so a Run after changing one
+setting refits only what that setting feeds, and going back to earlier
+settings refits nothing. The bundled datasets' fits are shared by every
+session of the R process; an upload's stay in its session. Where the machine
+has cores and memory to spare, the fitness function's 200 bootstrap refits
+run on up to four worker processes (each about 230 MB), started at the first
+Run and stopped with the app. They are not started on Windows, where the
+workers' socket would bring up the firewall's prompt, or on shinyapps.io or
+Posit Connect, unless `options(lande.workers = n)` with n of two or more asks
+for n of them; `options(lande.workers = 0)` keeps the refits in the R session
+everywhere. The results are the same either way. The band follows the k
+slider once it has rested for 600 ms, and Run takes the value it is on.
+
+So that one Run cannot hold a shared server for hours, the app takes at most
+10 traits, 5000 individuals with complete data and 20 groups (blanks count as
+one more), and keeps every numeric setting within the sidebar's range. The
+bootstrap is capped so individuals x terms x resamples stays within what the
+finch data take at 5000 resamples; the note under its button says when it
+drew fewer than asked. These limits are on when the app runs on its own, as on
+a server. `run_app()` turns them off, and `options(lande.limits = )` sets them
+either way.
+
+On a server that starts the app with `LANDE_NOTICE_FILE` set (the lab server's
+updater does), every open page shows a bar across the top while a restart is
+planned, with the time and the minutes left. The notice is a small JSON file
+with the restart time (`restart_at`, seconds since 1970) and optionally `at`
+and `reason`; the page also fetches `lande-notice.json` every 30 seconds where
+the server serves the same file, so the bar arrives while the app is busy.
+Without the variable nothing is added to the page.
 
 ## Run locally
 
@@ -52,8 +86,8 @@ settings, to read or download as a script.
 
 ## Optional packages
 
-- `fields`: thin-plate spline surfaces, static 3D landscape
-- `plotly`: rotatable 3D landscape
+- `fields`: thin-plate spline surfaces, static 3D landscape and surface
+- `plotly`: rotatable 3D landscape and surface
 - `car`: Type III ANOVA tables
 
 ## GitHub Pages via Shinylive

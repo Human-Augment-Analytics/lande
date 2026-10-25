@@ -41,6 +41,65 @@
   fits
 }
 
+#' @noRd
+# internal utility: the options a refit on a worker is given from the
+# caller's session. The contrasts and matprod can change the fit; the others
+# change which warnings a fit gives or how they are worded.
+.refit_options <- function() {
+  nms <- c("contrasts", "matprod", "digits", "OutDec", "scipen",
+           "warnPartialMatchArgs", "warnPartialMatchAttr", "warnPartialMatchDollar")
+  stats::setNames(lapply(nms, getOption), nms)
+}
+
+#' @noRd
+# internal utility: one bootstrap refit of the spline on rows i of d, run on a
+# worker of a parallel cluster. Returns the curve over the grid on the
+# response scale, whether the fit failed, the warnings and messages of the
+# fit and of the prediction apart, and an error in the prediction, which the
+# serial loop does not catch; the caller raises them where that loop would.
+# The worker fits under the caller's random number generator kinds, as mgcv
+# draws from it (and puts it back) when a thin-plate basis has to choose its
+# knots, and under the caller's options from .refit_options(). Only base R,
+# stats and mgcv are called, so it runs on a worker without lande.
+.spline_refit <- function(i, d, fml, fam, smoothing, grid, rng_kind, opts) {
+  kind <- RNGkind()
+  if (!identical(kind, rng_kind)) {
+    try(suppressWarnings(RNGkind(rng_kind[1], rng_kind[2], rng_kind[3])), silent = TRUE)
+    on.exit(try(suppressWarnings(RNGkind(kind[1], kind[2], kind[3])), silent = TRUE), add = TRUE)
+  }
+  old <- options(opts)
+  on.exit(options(old), add = TRUE)
+  said <- list()
+  keep <- function(cnd) {
+    said[[length(said) + 1L]] <<- cnd
+    tryInvokeRestart(if (inherits(cnd, "warning")) "muffleWarning" else "muffleMessage")
+  }
+  fit_b <- withCallingHandlers(
+    tryCatch(
+      mgcv::gam(fml, data = d[i, , drop = FALSE], family = fam, method = smoothing, na.action = stats::na.omit),
+      error = function(e) NULL
+    ),
+    warning = keep, message = keep
+  )
+  out <- list(fit_said = said, failed = is.null(fit_b))
+  if (out$failed) return(out)
+  said <- list()
+  err <- NULL
+  out$curve <- tryCatch(
+    withCallingHandlers(
+      fit_b$family$linkinv(as.numeric(stats::predict(fit_b, newdata = grid, type = "link"))),
+      warning = keep, message = keep
+    ),
+    error = function(e) {
+      err <<- e
+      NULL
+    }
+  )
+  out$predict_said <- said
+  out$error <- err
+  out
+}
+
 #' Estimate univariate correlated fitness function
 #'
 #' This function calculates a univariate correlated fitness function using a GAM smooth term.
@@ -73,6 +132,21 @@
 #'   \code{correlated_fitness_surface()}; the smoothing parameter is chosen
 #'   under whichever is used. The result's \code{dispersion} is the Pearson
 #'   dispersion of the fit, and a Poisson fit warns when it is above 1.5.
+#' @param cl Optional cluster from \code{parallel::makeCluster()} to run the
+#'   bootstrap refits on. The default \code{NULL} runs them one after another
+#'   in this session. With a cluster the resamples are still drawn here, in
+#'   the same order, and only the refits go to the workers, which fit under
+#'   this session's random number generator kinds and its options for
+#'   contrasts, matrix products and warnings. Their warnings and messages are
+#'   raised here in the order the serial loop raises them, so the ribbon, the
+#'   warnings, \code{options(warn = 2)} and the state of the random number
+#'   generator afterwards (or when a handler stops the call at a warning) are
+#'   the same as without a cluster. A negative binomial fit always runs here,
+#'   as each refit starts from the theta of the one before. The caller starts
+#'   and stops the cluster. The workers fit with mgcv, so they need the same
+#'   version of it as this session on their library paths (for example
+#'   \code{parallel::clusterCall(cl, function(p) .libPaths(p), .libPaths())});
+#'   lande itself need not be loaded on them.
 #'
 #' @details By default the fitness function is a penalised cubic regression
 #'   spline with the smoothing parameter chosen by generalised
@@ -109,17 +183,21 @@ univariate_spline <- function(data,
                               bootstrap = FALSE,
                               n_boot = 1000,
                               by_group = FALSE,
-                              count_family = c("poisson", "quasipoisson", "nb")) {
+                              count_family = c("poisson", "quasipoisson", "nb"),
+                              cl = NULL) {
   fitness_type <- match.arg(fitness_type)
   bs <- match.arg(bs)
   smoothing <- match.arg(smoothing)
   count_family <- match.arg(count_family)
+  if (!is.null(cl) && !inherits(cl, "cluster")) {
+    stop("`cl` must be a cluster from parallel::makeCluster() or NULL")
+  }
 
   if (isTRUE(by_group)) {
     fits <- .fit_by_group(data, group, function(rows) {
       univariate_spline(rows, fitness_col, trait_col, fitness_type = fitness_type, group = NULL,
                         relative_col = relative_col, k = k, bs = bs, smoothing = smoothing,
-                        bootstrap = bootstrap, n_boot = n_boot, count_family = count_family)
+                        bootstrap = bootstrap, n_boot = n_boot, count_family = count_family, cl = cl)
     })
     return(fits)
   }
@@ -307,12 +385,60 @@ univariate_spline <- function(data,
   if (bootstrap) {
     n <- nrow(df)
     boot_fits <- matrix(NA_real_, nrow = nrow(grid), ncol = n_boot)
-    for (b in seq_len(n_boot)) {
-      fit_b <- fit_gam(df[sample.int(n, n, replace = TRUE), , drop = FALSE])
-      if (is.null(fit_b)) next
-      boot_fits[, b] <- fit_b$family$linkinv(
-        as.numeric(stats::predict(fit_b, newdata = grid, type = "link"))
-      )
+    # mgcv's negative binomial family keeps theta between fits, so its refits
+    # depend on their order and stay in this session
+    if (!is.null(cl) && !(fitness_type == "count" && count_family == "nb")) {
+      # the resamples drawn as the loop below draws them, keeping the random
+      # number state after each, then refitted on the cluster. The refit and
+      # the formula travel without their environments (lande's namespace, and
+      # this call's, which holds the data and every resample), and only the
+      # model's columns go with them
+      env <- globalenv()
+      idx <- seeds <- vector("list", n_boot)
+      for (b in seq_len(n_boot)) {
+        idx[[b]] <- sample.int(n, n, replace = TRUE)
+        seeds[b] <- list(get0(".Random.seed", envir = env, inherits = FALSE))
+      }
+      refit <- .spline_refit
+      environment(refit) <- baseenv()
+      fml_w <- fml
+      environment(fml_w) <- baseenv()
+      refits <- parallel::parLapply(cl, idx, refit,
+                                    d = df[, unique(c(".y", trait_col, group)), drop = FALSE],
+                                    fml = fml_w, fam = fam, smoothing = smoothing, grid = grid,
+                                    rng_kind = RNGkind(), opts = .refit_options())
+      # each refit's warnings and messages are raised here as the loop below
+      # raises them: in order, from the random number state that loop is in
+      # when it fits that resample (so a handler that stops the call there
+      # leaves the same state), and those of the fit inside the loop's catch
+      # of a failed fit, so one that options(warn = 2) turns into an error
+      # drops the refit as it does there
+      say <- function(cnd) if (inherits(cnd, "warning")) warning(cnd) else message(cnd)
+      moved <- FALSE
+      for (b in seq_along(refits)) {
+        r <- refits[[b]]
+        if (!is.null(seeds[[b]]) && (length(r$fit_said) || length(r$predict_said) || !is.null(r$error))) {
+          assign(".Random.seed", seeds[[b]], envir = env)
+          moved <- TRUE
+        }
+        dropped <- tryCatch({
+          for (cnd in r$fit_said) say(cnd)
+          r$failed
+        }, error = function(e) TRUE)
+        if (dropped) next
+        for (cnd in r$predict_said) say(cnd)
+        if (!is.null(r$error)) stop(r$error)
+        boot_fits[, b] <- r$curve
+      }
+      if (moved && !is.null(seeds[[n_boot]])) assign(".Random.seed", seeds[[n_boot]], envir = env)
+    } else {
+      for (b in seq_len(n_boot)) {
+        fit_b <- fit_gam(df[sample.int(n, n, replace = TRUE), , drop = FALSE])
+        if (is.null(fit_b)) next
+        boot_fits[, b] <- fit_b$family$linkinv(
+          as.numeric(stats::predict(fit_b, newdata = grid, type = "link"))
+        )
+      }
     }
     n_ok <- sum(!is.na(boot_fits[1, ]))
     if (n_ok < 2) {

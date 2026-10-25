@@ -28,7 +28,9 @@
       NULL
     }
   )
-  if (!is.null(vif_vals) && any(vif_vals > 5)) {
+  # an exact fit (no residual degrees of freedom) has NaN VIFs, which say
+  # nothing about collinearity
+  if (!is.null(vif_vals) && any(vif_vals > 5, na.rm = TRUE)) {
     warning("Collinear traits (VIF above 5) may inflate the standard errors")
   }
   vif_vals

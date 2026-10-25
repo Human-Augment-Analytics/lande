@@ -112,7 +112,8 @@
 #' Medium ground finches (\emph{Geospiza fortis}) marked and recaptured at El
 #' Garrapatero, Santa Cruz Island, Galapagos. Each row is a bird in a year it
 #' was seen, from 2004 to 2010, with whether it was seen again in any later
-#' year (apparent survival). Built by \code{data-raw/finch_yearly.R}.
+#' year (apparent survival). Built by \code{data-raw/finch_yearly.R} in the
+#' GitHub repository.
 #'
 #' @format A data frame with 1087 rows and 7 variables:
 #' \describe{
@@ -140,9 +141,9 @@
 #' with \emph{Geospiza fortis} split into its small and large beak morphs. One
 #' row per bird, with its mean beak measurements and its apparent lifespan, the
 #' fitness measure of Beausoleil et al. (2023). Birds first caught late in the
-#' study had fewer years in which to be seen again. Built by
-#' \code{data-raw/finch_community.R} from the file in the authors' code
-#' repository (GPL-3).
+#' study had fewer years in which to be seen again. Built from the authors'
+#' data deposit on Borealis (\doi{10.5683/SP3/0YIWSE}), released under CC BY
+#' 4.0.
 #'
 #' @format A data frame with 3428 rows and 7 variables:
 #' \describe{

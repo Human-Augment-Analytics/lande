@@ -4,9 +4,9 @@
 # row per bird with its mean beak measurements and its apparent lifespan, the
 # last year it was seen minus the first (their fitness measure, mxcpois in their
 # file). Source file kept in validation/data:
-# it is data/bird.data.RData from the authors' code repository (GPL-3), which
-# they archived as https://doi.org/10.5683/SP3/0YIWSE. Cite the paper and the
-# dataset.
+# it is data/bird.data.RData from the authors' Borealis deposit,
+# https://doi.org/10.5683/SP3/0YIWSE, released under CC BY 4.0 (the same file
+# is in their GPL-3 code repository). Cite the paper and the dataset.
 # Run from the package root.
 load("validation/data/beausoleil2023_bird.data.RData")
 d <- bird.data[complete.cases(bird.data[, c("avg.mbl", "avg.mbd", "avg.mbw", "mxcpois", "sp2")]), ]

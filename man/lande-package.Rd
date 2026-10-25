@@ -4,11 +4,11 @@
 \name{lande-package}
 \alias{lande}
 \alias{lande-package}
-\title{lande: Tools for Evolutionary Selection Analysis}
+\title{lande: Standardised Analyses of Natural Selection Data}
 \description{
 \if{html}{\figure{logo.png}{options: style='float: right' alt='logo' width='120'}}
 
-Estimates selection differentials and linear, quadratic and correlational selection gradients on relative fitness following Lande and Arnold (1983) \doi{10.1111/j.1558-5646.1983.tb00236.x}, with p-values from the logistic model for survival and from a Poisson or negative binomial model for counts. Fits cubic spline fitness functions as in Schluter (1988) \doi{10.1111/j.1558-5646.1988.tb02507.x} and two-trait fitness surfaces drawn only where there are data, and computes adaptive landscapes of mean fitness against the population mean for one or two traits, by period and for several groups on one surface. Includes bootstrap intervals, a combined results table and a Shiny app.
+Estimates selection differentials and linear, quadratic and correlational selection gradients on relative fitness following Lande and Arnold (1983) \doi{10.1111/j.1558-5646.1983.tb00236.x}, with p-values from the logistic model for survival and from a Poisson or negative binomial model for counts. Fits cubic spline fitness functions as in Schluter (1988) \doi{10.1111/j.1558-5646.1988.tb02507.x} and two-trait fitness surfaces drawn only where there are data, and computes adaptive landscapes of mean fitness against the population mean for one or two traits, by period and for several groups on one surface. Includes bootstrap intervals, a combined results table and a 'shiny' app.
 }
 \section{Data}{
 

@@ -33,8 +33,8 @@ Four ground finch species at El Garrapatero, Santa Cruz Island, Galapagos,
 with \emph{Geospiza fortis} split into its small and large beak morphs. One
 row per bird, with its mean beak measurements and its apparent lifespan, the
 fitness measure of Beausoleil et al. (2023). Birds first caught late in the
-study had fewer years in which to be seen again. Built by
-\code{data-raw/finch_community.R} from the file in the authors' code
-repository (GPL-3).
+study had fewer years in which to be seen again. Built from the authors'
+data deposit on Borealis (\doi{10.5683/SP3/0YIWSE}), released under CC BY
+4.0.
 }
 \keyword{datasets}

@@ -74,7 +74,8 @@
 #'   each trait is also tested on its own with Shapiro and Wilk's test when
 #'   there are 5000 rows or fewer.
 #'
-#'   In the package's simulation (validation/simulation.R), on a curved
+#'   In the package's simulation (validation/simulation.R in the GitHub
+#'   repository), on a curved
 #'   fitness surface, nominal 95\% intervals for beta covered 88\% of the time
 #'   with normal traits, 67\% with log-normal ones and 77\% with symmetric
 #'   heavy-tailed ones (92, 80 and 91\% by bootstrap). Most of that loss comes

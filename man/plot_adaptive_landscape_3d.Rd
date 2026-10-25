@@ -30,7 +30,10 @@ plot_adaptive_landscape_3d(
 \item{...}{Additional arguments passed to \code{fields::drape.plot()}.}
 }
 \value{
-A 3D plot produced by \code{fields::drape.plot()}.
+Draws the landscape with \code{fields::drape.plot()} and returns,
+  invisibly, the 4 x 4 viewing transformation matrix from
+  \code{graphics::persp()}, which \code{grDevices::trans3d()} uses to add
+  points to the plot.
 }
 \description{
 Plot Adaptive Landscape (3D Perspective)

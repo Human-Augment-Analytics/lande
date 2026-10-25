@@ -20,6 +20,11 @@ the gradients, fitness functions, surfaces and landscapes from the tabs.
 Needs the \code{shiny} package; \code{plotly} adds the rotatable 3D
 landscape and \code{fields} the static one.
 }
+\details{
+The limits a shared server sets on a run (at most 10 traits, 5000
+individuals and 20 groups, and fewer bootstrap resamples for a large fit)
+are off here, unless \code{options(lande.limits = TRUE)} asks for them.
+}
 \examples{
 if (interactive()) run_app()
 }

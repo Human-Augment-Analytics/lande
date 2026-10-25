@@ -1120,7 +1120,6 @@ The nonlinear model grows quickly with the number of traits: $m$ traits give $m$
 table(data$fitness, cut(data$trait, 5))
 
 # 2. Use Firth's penalised likelihood
-if (!require("logistf")) install.packages("logistf")
 library(logistf)
 fit <- logistf(fitness ~ trait, data = data)
 

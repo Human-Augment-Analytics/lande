@@ -28,7 +28,7 @@ Compares individual-level fitness (correlated surface) to population-level mean 
 }
 \examples{
 prep <- prepare_selection_data(bumpus, "survival", c("total_length", "weight"))
-surf <- correlated_fitness_surface(prep, "survival", c("total_length", "weight"), grid_n = 30)
+surf <- correlated_fitness_surface(prep, "survival", c("total_length", "weight"), grid_n = 15)
 land <- adaptive_landscape(prep, surf$model, c("total_length", "weight"),
                            simulation_n = 100, grid_n = 15)
 comp <- compare_fitness_surfaces_data(surf, land, c("total_length", "weight"))

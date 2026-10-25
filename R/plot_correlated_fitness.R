@@ -535,3 +535,161 @@ plot_correlated_fitness_enhanced <- function(
 
   return(p)
 }
+
+
+# ======================================================
+# plot_correlated_fitness_3d
+# 3D perspective view of the correlated fitness surface
+# ======================================================
+
+#' Plot Correlated Fitness Surface (3D Perspective)
+#'
+#' Draws the fitted fitness of a two-trait surface in perspective. Cells
+#' blanked by \code{mask} or \code{too_far} are left out, so only the part of
+#' the surface with data under it is drawn. Each grid cell is outlined, so a
+#' surface fitted with \code{grid_n = 80} shows as 79 x 79 small squares.
+#'
+#' @param tps Output list from \code{correlated_fitness_surface()}.
+#' @param trait_cols Character vector of length 2 specifying the trait column names.
+#' @param theta Numeric azimuthal viewing angle. Default is -30.
+#' @param phi Numeric colatitude viewing angle. Default is 30.
+#' @param color_palette Colours for the surface: a vector of colours, or
+#'   \code{"jet"} for the rainbow ramp (dark blue through cyan, yellow and red
+#'   to dark red) used in many published fitness surfaces. Defaults to
+#'   viridis. Jet is harder to read for colour-blind viewers and its bright
+#'   bands can look like steps that are not in the surface, so viridis is the
+#'   safer choice for most figures.
+#' @param show_peaks Logical; mark the interior peaks of the surface (the
+#'   rows of \code{tps$peaks} with \code{interior} \code{TRUE}) with gold
+#'   diamonds. Maxima at the edge of the data are not marked. Default is
+#'   \code{TRUE}.
+#' @param border Colour of the lines outlining each grid cell. Default is
+#'   \code{"grey30"}, a dark grey that keeps the squares clear without
+#'   darkening the colours as black lines do; \code{NA} draws the surface
+#'   without them. With more than 100 grid values along a side the default
+#'   lines are faded, more as the grid gets finer, so they do not hide the
+#'   colours; give \code{border} to keep them at full strength.
+#' @param lwd Width of the cell outlines, which also sets the width of the box
+#'   lines. Default is 0.5.
+#' @param shade Strength of the shading that shows the relief, from 0 (flat
+#'   colours, no shading) towards 1 (darker slopes), passed to
+#'   \code{graphics::persp()}. Default is 0.15, light enough that the colours
+#'   stay close to the colour bar while the hills still stand out. Use
+#'   \code{NA} to switch the shading off.
+#' @param ... Additional arguments passed to \code{fields::drape.plot()}.
+#'
+#' @return The viewing transformation matrix from \code{fields::drape.plot()},
+#'   invisibly, which \code{grDevices::trans3d()} uses to add points.
+#' @examples
+#' prep <- prepare_selection_data(bumpus, "survival", c("total_length", "weight"))
+#' surf <- correlated_fitness_surface(prep, "survival", c("total_length", "weight"), grid_n = 30)
+#' plot_correlated_fitness_3d(surf, c("total_length", "weight"))
+#' @export
+plot_correlated_fitness_3d <- function(
+  tps,
+  trait_cols,
+  theta = -30,
+  phi = 30,
+  color_palette = NULL,
+  show_peaks = TRUE,
+  border = "grey30",
+  lwd = 0.5,
+  shade = 0.15,
+  ...
+) {
+  # Input validation
+  stopifnot(is.list(tps), "grid" %in% names(tps))
+
+  if (length(trait_cols) != 2L) {
+    stop("The 3D view needs two traits; for one trait use univariate_spline() ",
+         "and plot_univariate_fitness()")
+  }
+
+  if (!requireNamespace("fields", quietly = TRUE)) {
+    stop("Package 'fields' is required for 3D surface plots. ",
+         "Install it with install.packages('fields').")
+  }
+
+  df <- tps$grid
+
+  if (!all(trait_cols %in% names(df))) {
+    stop("Trait columns not found in tps$grid.")
+  }
+  if (!".fit" %in% names(df)) {
+    stop("No fitness column found in grid.")
+  }
+
+  x <- df[[trait_cols[1]]]
+  y <- df[[trait_cols[2]]]
+
+  # correlated_fitness_surface() predicts on a regular grid, so the fit goes
+  # straight into a matrix. Masked cells stay NA and persp() leaves them out.
+  xu <- sort(unique(x))
+  yu <- sort(unique(y))
+  if (nrow(df) != length(xu) * length(yu)) {
+    stop("tps$grid is not a complete regular grid; cannot draw a 3D surface")
+  }
+  zmat <- matrix(NA_real_, nrow = length(xu), ncol = length(yu))
+  zmat[cbind(match(x, xu), match(y, yu))] <- df$.fit
+  if (all(is.na(zmat))) {
+    stop("Every cell of the surface is masked; nothing to draw")
+  }
+
+  if (is.null(color_palette)) {
+    if (requireNamespace("viridis", quietly = TRUE)) {
+      color_palette <- viridis::viridis(100)
+    } else {
+      color_palette <- grDevices::heat.colors(100)
+    }
+  } else if (identical(color_palette, "jet")) {
+    color_palette <- jet_colours(100)
+  }
+
+  if (missing(border)) border <- grid_line_colour(border, max(dim(zmat)))
+
+  pm <- fields::drape.plot(
+    x = xu,
+    y = yu,
+    z = zmat,
+    theta = theta,
+    phi = phi,
+    xlab = trait_cols[1],
+    ylab = trait_cols[2],
+    zlab = "Fitness",
+    main = "Correlated Fitness Surface (3D View)",
+    col = color_palette,
+    border = border,
+    lwd = lwd,
+    shade = shade,
+    ...
+  )
+
+  # interior peaks, the same gold diamond as the optimum in the 2D plots
+  pk <- tps$peaks
+  if (show_peaks && !is.null(pk) && nrow(pk) && all(c(trait_cols, "fit", "interior") %in% names(pk))) {
+    pk <- pk[pk$interior %in% TRUE, , drop = FALSE]
+    if (nrow(pk)) {
+      at <- grDevices::trans3d(pk[[trait_cols[1]]], pk[[trait_cols[2]]], pk$fit, pm)
+      graphics::points(at, pch = 23, bg = "gold", col = "black", cex = 1.4)
+    }
+  }
+
+  invisible(pm)
+}
+
+
+# Past 100 grid values a side the cell outlines would hide the colours, so the
+# default line colour fades in step with the grid.
+grid_line_colour <- function(border, n_side) {
+  if (is.na(border) || n_side <= 100) return(border)
+  grDevices::adjustcolor(border, alpha.f = (100 / n_side)^2)
+}
+
+
+# The classic jet rainbow: dark blue through cyan, yellow and red to dark red.
+# fields::tim.colors() has since moved to a turbo-like ramp, so jet is built
+# here from its nine anchor colours.
+jet_colours <- function(n) {
+  grDevices::colorRampPalette(c("#00007F", "#0000FF", "#007FFF", "#00FFFF", "#7FFF7F",
+                                "#FFFF00", "#FF7F00", "#FF0000", "#7F0000"))(n)
+}
