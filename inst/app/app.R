@@ -267,6 +267,28 @@ DATA_SOURCES <- list(
               "Data (Borealis, CC BY 4.0)" = "https://doi.org/10.5683/SP3/0YIWSE")))
 numeric_cols <- function(df) names(df)[vapply(df, is.numeric, logical(1))]
 
+# Limits for a shared server, where one R process serves several people and a
+# long computation holds up all of them. A fit takes longer with more
+# individuals and more terms (k traits give k linear and k(k+1)/2 quadratic and
+# correlational terms, and a group of g levels in the model gives g - 1 more),
+# so the traits (all nine of Bumpus's fit), individuals and groups are capped,
+# and so is the bootstrap: individuals x terms x resamples is at most what the
+# finch data (3428 individuals, two traits) take at 5000 resamples. The groups
+# matter most for the fitness function, whose band refits the curve 200 times
+# at each Run, and its time grows faster than the number of groups. The limits
+# are on when the app runs on its own, as on a server; run_app() turns them off
+# for a session on your own machine, and options(lande.limits = ) sets them
+# either way.
+LIMITS <- isTRUE(getOption("lande.limits", TRUE))
+MAX_TRAITS <- 10
+MAX_ROWS <- 5000
+MAX_GROUPS <- 20
+max_boot <- function(n, k, groups = 1) {
+  if (!LIMITS) return(5000)
+  terms <- k + k * (k + 1) / 2 + groups - 1
+  max(2, min(5000, floor(3428 * 5 * 5000 / (n * terms))))
+}
+
 # --- formatting helpers -----------------------------------------------------
 stars <- function(p) {
   ifelse(is.na(p), "", ifelse(p < 0.001, "***", ifelse(p < 0.01, "**", ifelse(p < 0.05, "*", ""))))
@@ -642,7 +664,7 @@ ui <- fluidPage(
       h4("Design"),
       selectInput("fitness", "Fitness", NULL),
       div(class = "help-note", textOutput("fitness_hint")),
-      selectizeInput("traits", "Traits", NULL, multiple = TRUE),
+      selectizeInput("traits", "Traits", NULL, multiple = TRUE, options = if (LIMITS) list(maxItems = MAX_TRAITS)),
       selectInput("group", "Group (optional)", "(none)"),
       checkboxInput("within_group", "Standardise within group, group as a fixed effect", TRUE),
       div(class = "help-note",
@@ -781,6 +803,16 @@ ui <- fluidPage(
 # --- server -----------------------------------------------------------------
 server <- function(input, output, session) {
 
+  # Keep a numeric setting within the range the sidebar offers. The browser
+  # holds a slider or numericInput to its bounds, but the value comes over the
+  # WebSocket and a hand-made message need not respect them, so every setting
+  # that sets the size of a run is rounded and clamped before it is used.
+  clamp_num <- function(x, lo, hi, default) {
+    x <- suppressWarnings(round(as.numeric(x)))[1]
+    if (length(x) == 0L || is.na(x)) return(default)
+    min(max(x, lo), hi)
+  }
+
   # mgcv and MASS would load with the first fit; loading them once the page
   # is drawn takes that time out of the first Run
   session$onFlushed(function() for (p in c("mgcv", "MASS")) try(loadNamespace(p), silent = TRUE))
@@ -843,7 +875,9 @@ server <- function(input, output, session) {
     )[1]
     grp_default <- d$group %||% {
       g <- looks(nm, "^year$|site|sex|pop|species|lake|group|cohort|season")
-      g <- g[vapply(g, function(v) n_unique(v) %in% 2:30, logical(1))]
+      # no more groups than the app takes (30 without the limits), counting
+      # blanks as one more, as the package does
+      g <- g[vapply(g, function(v) n_unique(v) >= 2 && length(unique(d$data[[v]])) <= (if (LIMITS) MAX_GROUPS else 30), logical(1))]
       if (length(g)) g[1] else "(none)"
     }
     t_choices <- setdiff(nums, fit_default)
@@ -877,8 +911,9 @@ server <- function(input, output, session) {
     # one check at a time, so the message names the first problem
     validate(
       need(length(traits) >= 1, "Pick at least one trait."),
+      need(!LIMITS || length(traits) <= MAX_TRAITS, sprintf("Pick at most %d traits.", MAX_TRAITS)),
       need(!fit %in% traits, "Fitness column can't also be a trait."),
-      need(all(c(fit, traits) %in% names(d)), "Columns not found.")
+      need(all(c(fit, traits, grp) %in% names(d)), "Columns not found.")
     )
     validate(
       need(is.numeric(d[[fit]]) || is.logical(d[[fit]]), "Fitness column must be numeric (0/1 survival or a numeric measure)."),
@@ -889,7 +924,16 @@ server <- function(input, output, session) {
                   "Each trait needs more than two distinct values; a 0/1 column cannot be a trait."))
     # rows need fitness and every trait; the package keeps unlabelled rows as one more group
     d <- d[stats::complete.cases(d[, c(fit, traits)]), ]
-    validate(need(nrow(d) >= 20, "Need at least 20 individuals with complete data."))
+    validate(need(nrow(d) >= 20, "Need at least 20 individuals with complete data."),
+             need(!LIMITS || nrow(d) <= MAX_ROWS, sprintf("This app takes at most %d individuals with complete data; for more, use the lande package in R, where run_app() has no limits.", MAX_ROWS)))
+    # a group is a column in the models (with the switch on), and each group is
+    # also fitted, marked and listed on its own, so a column of many values (an
+    # id, a measurement) picked as the group would tie the process up for hours;
+    # blanks are one more group
+    n_groups <- if (is.null(grp)) 1L else nlevels(addNA(factor(d[[grp]]), ifany = TRUE))
+    validate(need(!LIMITS || n_groups <= MAX_GROUPS,
+                  sprintf("This app takes at most %d groups, and %s has %d among the individuals with complete data. Pick another group column, or (none).",
+                          MAX_GROUPS, grp, n_groups)))
     resolved <- if (input$ftype == "auto") detect_family(d[[fit]])$type else input$ftype
     if (!resolved %in% c("binary", "count")) resolved <- "continuous"
     # with the switch off the groups are one population: pooled standardisation,
@@ -919,7 +963,7 @@ server <- function(input, output, session) {
     updateSelectInput(session, "uni_trait", choices = traits, selected = keep_or(input$uni_trait, traits[1]))
     updateSelectInput(session, "surf_x", choices = traits, selected = keep_or(input$surf_x, traits[1]))
     updateSelectInput(session, "surf_y", choices = traits, selected = keep_or(input$surf_y, traits[min(2, length(traits))]))
-    list(d = d, prep = prep, fit = fit, traits = traits, group = grp, ftype = resolved,
+    list(d = d, prep = prep, fit = fit, traits = traits, group = grp, n_groups = n_groups, ftype = resolved,
          report = report, grouped = grouped, warnings = unique(warned), source = current()$source,
          # what was run, for the script, even if the inputs change afterwards
          dataset = input$dataset, file_name = if (!is.null(input$file)) input$file$name,
@@ -928,15 +972,16 @@ server <- function(input, output, session) {
          ftype_how = if (input$ftype == "auto") "detected" else "set by hand",
          per_group = isTRUE(input$per_group),
          seed = if (is.numeric(input$seed) && !is.na(input$seed)) round(input$seed) else 1,
-         surf_method = input$surf_method, surf_grid = input$surf_grid, surf_full = isTRUE(input$surf_full),
-         surf_k = if (is.numeric(input$surf_k) && !is.na(input$surf_k)) round(input$surf_k) else NULL,
+         surf_method = input$surf_method, surf_grid = clamp_num(input$surf_grid, 20, 80, 50), surf_full = isTRUE(input$surf_full),
+         surf_k = if (is.numeric(input$surf_k) && !is.na(input$surf_k)) clamp_num(input$surf_k, 5, 60, 5L) else NULL,
          surf_far = if (is.numeric(input$surf_far) && !is.na(input$surf_far) && input$surf_far > 0) input$surf_far else NULL,
          clamp = !isFALSE(input$clamp),
          within_group = within, group_model = grp_model,
          surf_bs = input$surf_bs %||% "tp", surf_sm = input$surf_sm %||% "REML",
          spline_bs = input$spline_bs %||% "cr", spline_sm = input$spline_sm %||% "GCV.Cp",
          count_family = input$count_family %||% "poisson",
-         grid_n = input$grid_n, sim_n = input$sim_n, land_method = input$land_method %||% "lattice",
+         grid_n = clamp_num(input$grid_n, 15, 60, 40), sim_n = clamp_num(input$sim_n, 100, 1000, 300),
+         land_method = input$land_method %||% "lattice",
          store = store, d_key = d_key, prep_key = rlang::hash(prep))
   })
 
@@ -973,14 +1018,21 @@ server <- function(input, output, session) {
     s <- setup()
     validate(need(is.numeric(input$n_boot) && !is.na(input$n_boot) && input$n_boot >= 2,
                   "Resamples must be a whole number of at least 2."))
+    asked <- clamp_num(input$n_boot, 2, 5000, 500)
+    # the group's columns count where the bootstrap fits them, in the survival
+    # and count models; continuous fitness is only standardised within groups
+    groups <- if (!is.null(s$group_model) && s$ftype != "continuous") s$n_groups else 1
+    n_boot <- min(asked, max_boot(nrow(s$d), length(s$traits), groups))
     args <- list(s$fit, s$traits, fitness_type = s$ftype, standardize = TRUE, group = s$group_model,
-                 n_boot = round(input$n_boot))
+                 n_boot = n_boot)
     withProgress(message = "Bootstrapping...", {
       b <- stored(s$store, list("bootstrap", s$d_key, args, s$seed), with_seed(s$seed, suppressWarnings(suppressMessages(
         do.call(bootstrap_selection, c(list(s$d), args))))))
     })
     # the number drawn, for the script; attr(b, "n_boot") counts the usable ones
-    attr(b, "n_drawn") <- round(input$n_boot)
+    attr(b, "n_drawn") <- n_boot
+    attr(b, "n_asked") <- asked
+    attr(b, "groups") <- groups
     boot_val(b)
   })
 
@@ -1123,7 +1175,10 @@ server <- function(input, output, session) {
   output$boot_note <- renderText({
     b <- boot_val()
     if (is.null(b)) "Error bars: ± 1.96 SE."
-    else sprintf("Bootstrap: %d resamples, seed %d.", attr(b, "n_boot"), setup()$seed)
+    else paste0(sprintf("Bootstrap: %d resamples, seed %d.", attr(b, "n_boot"), setup()$seed),
+                if (attr(b, "n_asked") > attr(b, "n_drawn"))
+                  sprintf(" %d were asked for; with this many %s the app runs at most %d.", attr(b, "n_asked"),
+                          if (attr(b, "groups") > 1) "individuals, traits and groups" else "individuals and traits", attr(b, "n_drawn")))
   })
   dl_name <- function(...) paste(c(file_stem(setup()$source), ...), collapse = "_")
 
@@ -1160,7 +1215,7 @@ server <- function(input, output, session) {
   k_used <- 0
   take_k <- function(k) {
     k_used <<- k_moves
-    k_taken(list(k = k, n = isolate(k_taken()$n) + 1))
+    k_taken(list(k = clamp_num(k, 3, 12, 5), n = isolate(k_taken()$n) + 1))
   }
   observeEvent(input$spline_k, k_moves <<- k_moves + 1, priority = 200)
   k_rested <- debounce(reactive(input$spline_k), 600)
@@ -1505,7 +1560,7 @@ server <- function(input, output, session) {
            uni_trait = uni_choice() %||% s$traits[1],
            spline_k = band_k() %||% 10,
            surf_traits = if (length(s$traits) >= 2 && length(tr) == 2 && !anyNA(tr) && tr[1] != tr[2]) tr else character(),
-           n_boot = if (!is.null(b)) attr(b, "n_drawn") else if (is.numeric(input$n_boot) && !is.na(input$n_boot)) round(input$n_boot) else 500,
+           n_boot = if (!is.null(b)) attr(b, "n_drawn") else clamp_num(input$n_boot, 2, 5000, 500),
            uncertainty = if (s$surf_method == "tps" || is.null(input$surf_unc)) "none" else input$surf_unc,
            canonical = isTRUE(input$canonical), uni_land = isTRUE(input$uni_land))
   })

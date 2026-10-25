@@ -1,5 +1,8 @@
 # lande (development version)
 
+* On a server, the app limits a run to 10 traits, 5000 individuals and 20
+  groups, and draws fewer bootstrap resamples for a large fit, so one Run
+  can't hold up everyone else. `run_app()` has no limits.
 * `plot_correlated_fitness_3d()` draws the fitted fitness surface in 3D as a
   mesh of grid squares outlined in dark grey, only where there are data, with
   its interior peaks marked and light shading that `shade` sets.

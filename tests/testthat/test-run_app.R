@@ -35,3 +35,14 @@ test_that("the app's jet theme colours the 2D bands and the 3D surface", {
   expect_false(anyNA(ld$fill))
   expect_equal(ld$fill[order(ld$level)][c(1, nrow(ld))], env$jet(n)[c(1, n)])
 })
+
+test_that("run_app() turns the server's run limits off unless asked for them", {
+  skip_if_not_installed("shiny")
+  local_mocked_bindings(runApp = function(...) getOption("lande.limits"), .package = "shiny")
+  op <- options(lande.limits = NULL)
+  on.exit(options(op), add = TRUE)
+  expect_false(run_app())
+  expect_null(getOption("lande.limits"))
+  options(lande.limits = TRUE)
+  expect_true(run_app())
+})

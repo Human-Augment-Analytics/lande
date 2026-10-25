@@ -50,6 +50,15 @@ for n of them; `options(lande.workers = 0)` keeps the refits in the R session
 everywhere. The results are the same either way. The band follows the k
 slider once it has rested for 600 ms, and Run takes the value it is on.
 
+So that one Run cannot hold a shared server for hours, the app takes at most
+10 traits, 5000 individuals with complete data and 20 groups (blanks count as
+one more), and keeps every numeric setting within the sidebar's range. The
+bootstrap is capped so individuals x terms x resamples stays within what the
+finch data take at 5000 resamples; the note under its button says when it
+drew fewer than asked. These limits are on when the app runs on its own, as on
+a server. `run_app()` turns them off, and `options(lande.limits = )` sets them
+either way.
+
 ## Run locally
 
 ```r
