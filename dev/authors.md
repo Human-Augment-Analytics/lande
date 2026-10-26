@@ -33,7 +33,7 @@
 ## Citation
 
 Source:
-[`inst/CITATION`](https://github.com/Human-Augment-Analytics/lande/blob/main/inst/CITATION)
+[`inst/CITATION`](https://github.com/Human-Augment-Analytics/lande/blob/v0.1.1.9000/inst/CITATION)
 
 Zhou V, Khan AS, Yu C, Papke T, Al Nabhani D, Garcia-Costoya G, Stroud
 JT (2026). *lande: Standardised Analyses of Natural Selection Data*.
